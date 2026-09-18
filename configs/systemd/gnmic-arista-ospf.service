@@ -1,0 +1,21 @@
+[Unit]
+Description=gNMIc Arista OSPF Telemetry Collector
+After=network-online.target influxdb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Reuse the existing root-only InfluxDB token.
+EnvironmentFile=/etc/telegraf/influxdb.env
+
+# Make gnmic discoverable whether installed in /usr/bin or /usr/local/bin.
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+
+ExecStart=/usr/bin/env gnmic --config /etc/gnmic/arista-ospf.yml subscribe
+
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

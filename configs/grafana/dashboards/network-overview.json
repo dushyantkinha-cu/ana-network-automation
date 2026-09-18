@@ -1,0 +1,440 @@
+{
+  "id": null,
+  "uid": "ana-network-overview",
+  "title": "ANA Lab - Network Overview",
+  "tags": [
+    "network",
+    "telemetry",
+    "ana-lab"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 42,
+  "version": 4,
+  "refresh": "10s",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Monitored Devices",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "from(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"net_device_health\")\n  |> filter(fn: (r) => r._field == \"cpu_util_pct\")\n  |> filter(fn: (r) => r.device != \"R5\")\n  |> group(columns: [\"device\"])\n  |> last()\n  |> group()\n  |> count(column: \"_value\")"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Admin-Up / Oper-Down Interfaces",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifstate\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r._field == \"admin_status\" or\n    r._field == \"oper_status\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\",\n    \"_field\"\n  ])\n  |> last()\n  |> group()\n  |> pivot(\n    rowKey: [\"device\", \"interface\"],\n    columnKey: [\"_field\"],\n    valueColumn: \"_value\"\n  )\n  |> reduce(\n    identity: {interfaces_down: 0},\n    fn: (r, accumulator) => ({\n      interfaces_down:\n        accumulator.interfaces_down +\n        (if exists r.admin_status and\n            exists r.oper_status and\n            r.admin_status == \"UP\" and\n            r.oper_status != \"UP\"\n         then 1\n         else 0)\n    })\n  )\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Unhealthy Routing Neighbors",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "from(bucket: \"ana-lab\")\n  |> range(start: -1m)\n  |> filter(fn: (r) => r._measurement == \"net_neighbor_state\")\n  |> filter(fn: (r) => r._field == \"session_up\")\n  |> filter(fn: (r) => r.device != \"R5\")\n  |> group(columns: [\"device\", \"protocol\", \"neighbor\", \"interface\"])\n  |> last()\n  |> map(fn: (r) => ({r with _value: if r._value == 1 then 0 else 1}))\n  |> group()\n  |> sum(column: \"_value\")"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Device Health Snapshot",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 80
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 75
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_device_health\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r._field == \"cpu_util_pct\" or\n    r._field == \"memory_util_pct\" or\n    r._field == \"uptime_seconds\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"vendor\",\n    \"mgmt_ip\",\n    \"_field\"\n  ])\n  |> last()\n  |> map(fn: (r) => ({\n    r with\n    _value: float(v: r._value)\n  }))\n  |> group()\n  |> pivot(\n    rowKey: [\n      \"device\",\n      \"vendor\",\n      \"mgmt_ip\"\n    ],\n    columnKey: [\"_field\"],\n    valueColumn: \"_value\"\n  )\n  |> map(fn: (r) => ({\n    r with\n    uptime:\n      string(v: int(v: r.uptime_seconds) / 86400) + \"d \" +\n      string(v: (int(v: r.uptime_seconds) % 86400) / 3600) + \"h \" +\n      string(v: (int(v: r.uptime_seconds) % 3600) / 60) + \"m\"\n  }))\n  |> keep(columns: [\n    \"device\",\n    \"vendor\",\n    \"mgmt_ip\",\n    \"cpu_util_pct\",\n    \"memory_util_pct\",\n    \"uptime\"\n  ])\n  |> rename(columns: {\n    device: \"Device\",\n    vendor: \"Vendor\",\n    mgmt_ip: \"Management IP\",\n    cpu_util_pct: \"CPU %\",\n    memory_util_pct: \"Memory %\",\n    uptime: \"Uptime\"\n  })\n  |> sort(columns: [\"Device\"])\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "CPU Utilization",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "from(bucket: \"ana-lab\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"net_device_health\")\n  |> filter(fn: (r) => r._field == \"cpu_util_pct\")\n  |> filter(fn: (r) => r.device != \"R5\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> group(columns: [\"device\"])\n  |> keep(columns: [\"_time\", \"_value\", \"device\"])"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Memory Utilization",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "from(bucket: \"ana-lab\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"net_device_health\")\n  |> filter(fn: (r) => r._field == \"memory_util_pct\")\n  |> filter(fn: (r) => r.device != \"R5\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> group(columns: [\"device\"])\n  |> keep(columns: [\"_time\", \"_value\", \"device\"])"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Routing Neighbor State",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "from(bucket: \"ana-lab\")\n  |> range(start: -2m)\n  |> filter(fn: (r) => r._measurement == \"net_neighbor_state\")\n  |> filter(fn: (r) => r._field == \"session_state\")\n  |> filter(fn: (r) => r.device != \"R5\")\n  |> group(columns: [\"vendor\", \"device\", \"protocol\", \"neighbor\", \"interface\"])\n  |> last()\n  |> group()\n  |> keep(columns: [\"_time\", \"vendor\", \"device\", \"protocol\", \"neighbor\", \"interface\", \"address_family\", \"_value\"])\n  |> rename(columns: {_value: \"state\"})\n  |> sort(columns: [\"device\", \"protocol\", \"interface\", \"neighbor\"])"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": []
+}

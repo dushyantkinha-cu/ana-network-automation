@@ -1,0 +1,1042 @@
+{
+  "id": null,
+  "uid": "ana-interfaces",
+  "title": "ANA Lab - Interfaces",
+  "tags": [
+    "network",
+    "interfaces",
+    "telemetry",
+    "ana-lab"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 42,
+  "version": 6,
+  "refresh": "10s",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Device",
+        "type": "custom",
+        "query": "R1,R2,R3,R4,S1,S2,S3,S4",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "options": [
+          {
+            "selected": false,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": true,
+            "text": "R1",
+            "value": "R1"
+          },
+          {
+            "selected": false,
+            "text": "R2",
+            "value": "R2"
+          },
+          {
+            "selected": false,
+            "text": "R3",
+            "value": "R3"
+          },
+          {
+            "selected": false,
+            "text": "R4",
+            "value": "R4"
+          },
+          {
+            "selected": false,
+            "text": "S1",
+            "value": "S1"
+          },
+          {
+            "selected": false,
+            "text": "S2",
+            "value": "S2"
+          },
+          {
+            "selected": false,
+            "text": "S3",
+            "value": "S3"
+          },
+          {
+            "selected": false,
+            "text": "S4",
+            "value": "S4"
+          }
+        ],
+        "current": {
+          "selected": true,
+          "text": "R1",
+          "value": "R1"
+        },
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "interface",
+        "label": "Interface",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ana-lab-influx"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\n\nschema.tagValues(\n  bucket: \"ana-lab\",\n  tag: \"interface\",\n  predicate: (r) =>\n    r._measurement == \"net_ifstate\" and\n    r.device != \"R5\" and\n    r.device =~ /^${device:regex}$/\n)\n",
+        "query": "import \"influxdata/influxdb/schema\"\n\nschema.tagValues(\n  bucket: \"ana-lab\",\n  tag: \"interface\",\n  predicate: (r) =>\n    r._measurement == \"net_ifstate\" and\n    r.device != \"R5\" and\n    r.device =~ /^${device:regex}$/\n)\n",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "options": [],
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 90,
+      "type": "row",
+      "title": "Interface Summary",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Interfaces in Selection",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifstate\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.interface =~ /^${interface:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r._field == \"admin_status\" or\n    r._field == \"oper_status\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\",\n    \"_field\"\n  ])\n  |> last()\n  |> group()\n  |> pivot(\n    rowKey: [\"device\", \"interface\"],\n    columnKey: [\"_field\"],\n    valueColumn: \"_value\"\n  )\n  |> reduce(\n    identity: {interfaces: 0},\n    fn: (r, accumulator) => ({\n      interfaces: accumulator.interfaces + 1\n    })\n  )\n"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Operationally Up in Selection",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifstate\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.interface =~ /^${interface:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r._field == \"oper_status\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\"\n  ])\n  |> last()\n  |> group()\n  |> reduce(\n    identity: {interfaces_up: 0},\n    fn: (r, accumulator) => ({\n      interfaces_up:\n        accumulator.interfaces_up +\n        (if r._value == \"UP\" then 1 else 0)\n    })\n  )\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Faulted Interfaces",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifstate\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.interface =~ /^${interface:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r._field == \"admin_status\" or\n    r._field == \"oper_status\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\",\n    \"_field\"\n  ])\n  |> last()\n  |> group()\n  |> pivot(\n    rowKey: [\"device\", \"interface\"],\n    columnKey: [\"_field\"],\n    valueColumn: \"_value\"\n  )\n  |> reduce(\n    identity: {interfaces_down: 0},\n    fn: (r, accumulator) => ({\n      interfaces_down:\n        accumulator.interfaces_down +\n        (if exists r.admin_status and\n            exists r.oper_status and\n            r.admin_status == \"UP\" and\n            r.oper_status != \"UP\"\n         then 1\n         else 0)\n    })\n  )\n"
+        }
+      ],
+      "description": "Counts only interfaces that are administratively UP but operationally not UP. Administratively-down ports are not considered faults."
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Device Interface Summary",
+      "description": "Summary by device. Admin-down interfaces are shown separately from actual admin-up/oper-down faults.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Device"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Up"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Admin Down"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Faulted"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifstate\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.interface =~ /^${interface:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r._field == \"admin_status\" or\n    r._field == \"oper_status\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\",\n    \"_field\"\n  ])\n  |> last()\n  |> group()\n  |> pivot(\n    rowKey: [\n      \"device\",\n      \"interface\"\n    ],\n    columnKey: [\"_field\"],\n    valueColumn: \"_value\"\n  )\n  |> group(columns: [\"device\"])\n  |> reduce(\n    identity: {\n      total: 0,\n      up: 0,\n      admin_down: 0,\n      faulted: 0\n    },\n    fn: (r, accumulator) => ({\n      total:\n        accumulator.total + 1,\n\n      up:\n        accumulator.up +\n        (if exists r.oper_status and\n            r.oper_status == \"UP\"\n         then 1\n         else 0),\n\n      admin_down:\n        accumulator.admin_down +\n        (if exists r.admin_status and\n            r.admin_status == \"DOWN\"\n         then 1\n         else 0),\n\n      faulted:\n        accumulator.faulted +\n        (if exists r.admin_status and\n            exists r.oper_status and\n            r.admin_status == \"UP\" and\n            r.oper_status != \"UP\"\n         then 1\n         else 0)\n    })\n  )\n  |> group()\n  |> rename(columns: {\n    device: \"Device\",\n    total: \"Total\",\n    up: \"Up\",\n    admin_down: \"Admin Down\",\n    faulted: \"Faulted\"\n  })\n  |> keep(columns: [\n    \"Device\",\n    \"Total\",\n    \"Up\",\n    \"Admin Down\",\n    \"Faulted\"\n  ])\n  |> sort(columns: [\"Device\"])\n"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Top Data-Plane Interfaces by Average Traffic (5m)",
+      "description": "Average combined ingress and egress throughput. Known management interfaces are excluded from this ranking but remain available in the drill-down selector.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Average Traffic"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifcounters\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.interface =~ /^${interface:regex}$/\n  )\n  |> filter(fn: (r) =>\n    not (\n      (r.vendor == \"arista\" and r.interface == \"Management0\") or\n      (r.vendor == \"cisco\" and r.interface == \"GigabitEthernet1\") or\n      (r.vendor == \"nokia\" and r.interface == \"mgmt0\")\n    )\n  )\n  |> filter(fn: (r) =>\n    r._field == \"in_octets\" or\n    r._field == \"out_octets\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\",\n    \"_field\"\n  ])\n  |> aggregateWindow(\n    every: 10s,\n    fn: last,\n    createEmpty: false\n  )\n  |> derivative(\n    unit: 1s,\n    nonNegative: true\n  )\n  |> map(fn: (r) => ({\n    r with\n    _value: float(v: r._value) * 8.0\n  }))\n  |> mean(column: \"_value\")\n  |> group(columns: [\n    \"device\",\n    \"interface\"\n  ])\n  |> sum(column: \"_value\")\n  |> group()\n  |> sort(\n    columns: [\"_value\"],\n    desc: true\n  )\n  |> limit(n: 10)\n  |> rename(columns: {\n    device: \"Device\",\n    interface: \"Interface\",\n    _value: \"Average Traffic\"\n  })\n  |> keep(columns: [\n    \"Device\",\n    \"Interface\",\n    \"Average Traffic\"\n  ])\n"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Problem Interfaces (empty = healthy)",
+      "description": "Shows true state faults plus interfaces whose error or discard counters increased during the last five minutes. Admin-down/oper-down unused ports are intentionally omitted.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Problem"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Admin UP / Oper not UP": {
+                        "text": "Admin UP / Oper not UP",
+                        "color": "red"
+                      },
+                      "Errors/discards increased": {
+                        "text": "Errors/discards increased",
+                        "color": "yellow"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nstateProblems =\n  from(bucket: \"ana-lab\")\n    |> range(start: -5m)\n    |> filter(fn: (r) =>\n      r._measurement == \"net_ifstate\"\n    )\n    |> filter(fn: (r) =>\n      r.device != \"R5\"\n    )\n    |> filter(fn: (r) =>\n      r.device =~ /^${device:regex}$/\n    )\n    |> filter(fn: (r) =>\n      r.interface =~ /^${interface:regex}$/\n    )\n    |> filter(fn: (r) =>\n      r._field == \"admin_status\" or\n      r._field == \"oper_status\"\n    )\n    |> group(columns: [\n      \"device\",\n      \"interface\",\n      \"_field\"\n    ])\n    |> last()\n    |> group()\n    |> pivot(\n      rowKey: [\n        \"device\",\n        \"interface\"\n      ],\n      columnKey: [\"_field\"],\n      valueColumn: \"_value\"\n    )\n    |> filter(fn: (r) =>\n      exists r.admin_status and\n      exists r.oper_status and\n      r.admin_status == \"UP\" and\n      r.oper_status != \"UP\"\n    )\n    |> map(fn: (r) => ({\n      Device: r.device,\n      Interface: r.interface,\n      Problem: \"Admin UP / Oper not UP\",\n      Detail:\n        r.admin_status + \" / \" +\n        r.oper_status\n    }))\n\ncounterProblems =\n  from(bucket: \"ana-lab\")\n    |> range(start: -5m)\n    |> filter(fn: (r) =>\n      r._measurement == \"net_ifcounters\"\n    )\n    |> filter(fn: (r) =>\n      r.device != \"R5\"\n    )\n    |> filter(fn: (r) =>\n      r.device =~ /^${device:regex}$/\n    )\n    |> filter(fn: (r) =>\n      r.interface =~ /^${interface:regex}$/\n    )\n    |> filter(fn: (r) =>\n      r._field == \"in_errors\" or\n      r._field == \"out_errors\" or\n      r._field == \"in_discards\" or\n      r._field == \"out_discards\" or\n      r._field == \"in_fcs_errors\"\n    )\n    |> group(columns: [\n      \"device\",\n      \"interface\",\n      \"_field\"\n    ])\n    |> difference(nonNegative: true)\n    |> map(fn: (r) => ({\n      r with\n      _value: float(v: r._value)\n    }))\n    |> group(columns: [\n      \"device\",\n      \"interface\"\n    ])\n    |> sum(column: \"_value\")\n    |> filter(fn: (r) =>\n      r._value > 0.0\n    )\n    |> map(fn: (r) => ({\n      Device: r.device,\n      Interface: r.interface,\n      Problem: \"Errors/discards increased\",\n      Detail:\n        string(v: int(v: r._value)) +\n        \" event(s) / 5m\"\n    }))\n\nunion(\n  tables: [\n    stateProblems,\n    counterProblems\n  ]\n)\n  |> group()\n  |> sort(columns: [\n    \"Device\",\n    \"Interface\",\n    \"Problem\"\n  ])\n"
+        }
+      ]
+    },
+    {
+      "id": 91,
+      "type": "row",
+      "title": "Interface Drill-Down",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Selected Interface State",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Admin State"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "UP": {
+                        "text": "UP",
+                        "color": "green"
+                      },
+                      "DOWN": {
+                        "text": "DOWN",
+                        "color": "red"
+                      },
+                      "UNKNOWN": {
+                        "text": "UNKNOWN",
+                        "color": "yellow"
+                      },
+                      "DORMANT": {
+                        "text": "DORMANT",
+                        "color": "yellow"
+                      },
+                      "TEST": {
+                        "text": "TEST",
+                        "color": "yellow"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Oper State"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "UP": {
+                        "text": "UP",
+                        "color": "green"
+                      },
+                      "DOWN": {
+                        "text": "DOWN",
+                        "color": "red"
+                      },
+                      "UNKNOWN": {
+                        "text": "UNKNOWN",
+                        "color": "yellow"
+                      },
+                      "DORMANT": {
+                        "text": "DORMANT",
+                        "color": "yellow"
+                      },
+                      "TEST": {
+                        "text": "TEST",
+                        "color": "yellow"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifstate\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.interface =~ /^${interface:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r._field == \"admin_status\" or\n    r._field == \"oper_status\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\",\n    \"_field\"\n  ])\n  |> last()\n  |> group()\n  |> pivot(\n    rowKey: [\"device\", \"interface\"],\n    columnKey: [\"_field\"],\n    valueColumn: \"_value\"\n  )\n  |> keep(columns: [\n    \"device\",\n    \"interface\",\n    \"admin_status\",\n    \"oper_status\"\n  ])\n  |> rename(columns: {\n    device: \"Device\",\n    interface: \"Interface\",\n    admin_status: \"Admin State\",\n    oper_status: \"Oper State\"\n  })\n  |> sort(columns: [\n    \"Device\",\n    \"Interface\"\n  ])\n"
+        }
+      ],
+      "description": "Detailed interface state for the Device and Interface selectors above. Administratively-down interfaces are not considered faults."
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Selected Traffic Throughput",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(\n    start: v.timeRangeStart,\n    stop: v.timeRangeStop\n  )\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifcounters\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.interface =~ /^${interface:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r._field == \"in_octets\" or\n    r._field == \"out_octets\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\",\n    \"_field\"\n  ])\n  |> aggregateWindow(\n    every: v.windowPeriod,\n    fn: last,\n    createEmpty: false\n  )\n  |> derivative(\n    unit: 1s,\n    nonNegative: true\n  )\n  |> map(fn: (r) => ({\n    _time: r._time,\n    _value: float(v: r._value) * 8.0,\n    _field:\n      r.device + \" \" +\n      r.interface + \" \" +\n      (if r._field == \"in_octets\"\n       then \"RX\"\n       else \"TX\")\n  }))\n  |> group(columns: [\"_field\"])\n"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Selected Packet Rate",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(\n    start: v.timeRangeStart,\n    stop: v.timeRangeStop\n  )\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifcounters\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.interface =~ /^${interface:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r._field == \"in_pkts\" or\n    r._field == \"out_pkts\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\",\n    \"_field\"\n  ])\n  |> aggregateWindow(\n    every: v.windowPeriod,\n    fn: last,\n    createEmpty: false\n  )\n  |> derivative(\n    unit: 1s,\n    nonNegative: true\n  )\n  |> map(fn: (r) => ({\n    _time: r._time,\n    _value: float(v: r._value),\n    _field:\n      r.device + \" \" +\n      r.interface + \" \" +\n      (if r._field == \"in_pkts\"\n       then \"RX\"\n       else \"TX\")\n  }))\n  |> group(columns: [\"_field\"])\n"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Selected Error / Discard Events",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(\n    start: v.timeRangeStart,\n    stop: v.timeRangeStop\n  )\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifcounters\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.interface =~ /^${interface:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r._field == \"in_errors\" or\n    r._field == \"out_errors\" or\n    r._field == \"in_discards\" or\n    r._field == \"out_discards\" or\n    r._field == \"in_fcs_errors\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\",\n    \"_field\"\n  ])\n  |> aggregateWindow(\n    every: v.windowPeriod,\n    fn: last,\n    createEmpty: false\n  )\n  |> derivative(\n    unit: 1s,\n    nonNegative: true\n  )\n  |> filter(fn: (r) =>\n    r._value > 0\n  )\n  |> map(fn: (r) => ({\n    _time: r._time,\n    _value: float(v: r._value),\n    _field:\n      r.device + \" \" +\n      r.interface + \" \" +\n      (if r._field == \"in_errors\" then \"RX errors\"\n       else if r._field == \"out_errors\" then \"TX errors\"\n       else if r._field == \"in_discards\" then \"RX discards\"\n       else if r._field == \"out_discards\" then \"TX discards\"\n       else \"FCS errors\")\n  }))\n  |> group(columns: [\"_field\"])\n"
+        }
+      ],
+      "description": "Shows only increases in error/discard counters. An empty panel means no new error/discard events occurred during the selected time range."
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Selected Error / Discard Totals",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "In Errors"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Out Errors"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "In Discards"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Out Discards"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "FCS Errors"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifcounters\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.interface =~ /^${interface:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r._field == \"in_errors\" or\n    r._field == \"out_errors\" or\n    r._field == \"in_discards\" or\n    r._field == \"out_discards\" or\n    r._field == \"in_fcs_errors\"\n  )\n  |> group(columns: [\n    \"device\",\n    \"interface\",\n    \"_field\"\n  ])\n  |> last()\n  |> map(fn: (r) => ({\n    r with\n    _value: float(v: r._value)\n  }))\n  |> group()\n  |> pivot(\n    rowKey: [\n      \"device\",\n      \"interface\"\n    ],\n    columnKey: [\"_field\"],\n    valueColumn: \"_value\"\n  )\n  |> keep(columns: [\n    \"device\",\n    \"interface\",\n    \"in_errors\",\n    \"out_errors\",\n    \"in_discards\",\n    \"out_discards\",\n    \"in_fcs_errors\"\n  ])\n  |> rename(columns: {\n    device: \"Device\",\n    interface: \"Interface\",\n    in_errors: \"In Errors\",\n    out_errors: \"Out Errors\",\n    in_discards: \"In Discards\",\n    out_discards: \"Out Discards\",\n    in_fcs_errors: \"FCS Errors\"\n  })\n  |> sort(columns: [\n    \"Device\",\n    \"Interface\"\n  ])\n"
+        }
+      ],
+      "description": "Current cumulative error and discard counters for the selected interfaces."
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "links": []
+}

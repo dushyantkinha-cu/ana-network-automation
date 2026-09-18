@@ -1,0 +1,871 @@
+{
+  "id": null,
+  "uid": "ana-routing",
+  "title": "ANA Lab - Routing",
+  "tags": [
+    "network",
+    "routing",
+    "telemetry",
+    "ana-lab"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 42,
+  "version": 3,
+  "refresh": "10s",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Device",
+        "type": "custom",
+        "query": "R1,R2,R3,R4,S1,S2,S3,S4",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "R1",
+            "value": "R1"
+          },
+          {
+            "selected": false,
+            "text": "R2",
+            "value": "R2"
+          },
+          {
+            "selected": false,
+            "text": "R3",
+            "value": "R3"
+          },
+          {
+            "selected": false,
+            "text": "R4",
+            "value": "R4"
+          },
+          {
+            "selected": false,
+            "text": "S1",
+            "value": "S1"
+          },
+          {
+            "selected": false,
+            "text": "S2",
+            "value": "S2"
+          },
+          {
+            "selected": false,
+            "text": "S3",
+            "value": "S3"
+          },
+          {
+            "selected": false,
+            "text": "S4",
+            "value": "S4"
+          }
+        ],
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "protocol",
+        "label": "Protocol",
+        "type": "custom",
+        "query": "bgp,ospfv2,ospfv3,isis",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "BGP",
+            "value": "bgp"
+          },
+          {
+            "selected": false,
+            "text": "OSPFv2",
+            "value": "ospfv2"
+          },
+          {
+            "selected": false,
+            "text": "OSPFv3",
+            "value": "ospfv3"
+          },
+          {
+            "selected": false,
+            "text": "IS-IS",
+            "value": "isis"
+          }
+        ],
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "neighbor",
+        "label": "Neighbor",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ana-lab-influx"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\n\nschema.tagValues(\n  bucket: \"ana-lab\",\n  tag: \"neighbor\",\n  predicate: (r) =>\n    r._measurement == \"net_neighbor_state\" and\n    r.device != \"R5\" and\n    r.device =~ /^${device:regex}$/ and\n    r.protocol =~ /^${protocol:regex}$/,\n  start: -24h\n)\n",
+        "query": "import \"influxdata/influxdb/schema\"\n\nschema.tagValues(\n  bucket: \"ana-lab\",\n  tag: \"neighbor\",\n  predicate: (r) =>\n    r._measurement == \"net_neighbor_state\" and\n    r.device != \"R5\" and\n    r.device =~ /^${device:regex}$/ and\n    r.protocol =~ /^${protocol:regex}$/,\n  start: -24h\n)\n",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "options": [],
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 90,
+      "type": "row",
+      "title": "Routing Summary",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Routing Adjacencies in Selection",
+      "description": "Current BGP sessions, OSPFv2 adjacencies, OSPFv3 adjacencies, and IS-IS adjacencies matching the selectors.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -2m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_neighbor_state\"\n  )\n  |> filter(fn: (r) =>\n    r._field == \"session_up\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.protocol =~ /^${protocol:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.neighbor =~ /^${neighbor:regex}$/\n  )\n  |> group(columns: [\n    \"device\",\n    \"protocol\",\n    \"neighbor\",\n    \"interface\"\n  ])\n  |> last()\n  |> group()\n  |> reduce(\n    identity: {adjacencies: 0},\n    fn: (r, accumulator) => ({\n      adjacencies: accumulator.adjacencies + 1\n    })\n  )\n"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Healthy Adjacencies",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -2m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_neighbor_state\"\n  )\n  |> filter(fn: (r) =>\n    r._field == \"session_up\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.protocol =~ /^${protocol:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.neighbor =~ /^${neighbor:regex}$/\n  )\n  |> group(columns: [\n    \"device\",\n    \"protocol\",\n    \"neighbor\",\n    \"interface\"\n  ])\n  |> last()\n  |> group()\n  |> reduce(\n    identity: {healthy: 0},\n    fn: (r, accumulator) => ({\n      healthy:\n        accumulator.healthy +\n        (if r._value == 1 then 1 else 0)\n    })\n  )\n"
+        }
+      ],
+      "description": "Routing adjacencies whose canonical session_up value is 1."
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Unhealthy Adjacencies",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -2m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_neighbor_state\"\n  )\n  |> filter(fn: (r) =>\n    r._field == \"session_up\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.protocol =~ /^${protocol:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.neighbor =~ /^${neighbor:regex}$/\n  )\n  |> group(columns: [\n    \"device\",\n    \"protocol\",\n    \"neighbor\",\n    \"interface\"\n  ])\n  |> last()\n  |> group()\n  |> reduce(\n    identity: {unhealthy: 0},\n    fn: (r, accumulator) => ({\n      unhealthy:\n        accumulator.unhealthy +\n        (if r._value == 1 then 0 else 1)\n    })\n  )\n"
+        }
+      ],
+      "description": "Routing adjacencies whose canonical session_up value is not 1. Zero is the healthy state."
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Protocol Health Summary",
+      "description": "Current routing adjacency health grouped by protocol.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Protocol"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "bgp": {
+                        "text": "BGP"
+                      },
+                      "ospfv2": {
+                        "text": "OSPFv2"
+                      },
+                      "ospfv3": {
+                        "text": "OSPFv3"
+                      },
+                      "isis": {
+                        "text": "IS-IS"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Healthy"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unhealthy"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -2m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_neighbor_state\"\n  )\n  |> filter(fn: (r) =>\n    r._field == \"session_up\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.protocol =~ /^${protocol:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.neighbor =~ /^${neighbor:regex}$/\n  )\n  |> group(columns: [\n    \"device\",\n    \"protocol\",\n    \"neighbor\",\n    \"interface\"\n  ])\n  |> last()\n  |> group(columns: [\"protocol\"])\n  |> reduce(\n    identity: {\n      total: 0,\n      healthy: 0,\n      unhealthy: 0\n    },\n    fn: (r, accumulator) => ({\n      total:\n        accumulator.total + 1,\n\n      healthy:\n        accumulator.healthy +\n        (if r._value == 1 then 1 else 0),\n\n      unhealthy:\n        accumulator.unhealthy +\n        (if r._value == 1 then 0 else 1)\n    })\n  )\n  |> group()\n  |> rename(columns: {\n    protocol: \"Protocol\",\n    total: \"Total\",\n    healthy: \"Healthy\",\n    unhealthy: \"Unhealthy\"\n  })\n  |> keep(columns: [\n    \"Protocol\",\n    \"Total\",\n    \"Healthy\",\n    \"Unhealthy\"\n  ])\n  |> sort(columns: [\"Protocol\"])\n"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Unhealthy Neighbors",
+      "description": "Only unhealthy routing adjacencies are shown. An empty panel means all selected adjacencies are healthy.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "UNHEALTHY": {
+                        "text": "UNHEALTHY",
+                        "color": "red"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -2m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_neighbor_state\"\n  )\n  |> filter(fn: (r) =>\n    r._field == \"session_up\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.protocol =~ /^${protocol:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.neighbor =~ /^${neighbor:regex}$/\n  )\n  |> group(columns: [\n    \"device\",\n    \"protocol\",\n    \"neighbor\",\n    \"interface\"\n  ])\n  |> last()\n  |> filter(fn: (r) =>\n    r._value != 1\n  )\n  |> map(fn: (r) => ({\n    Time: r._time,\n    Device: r.device,\n    Protocol: r.protocol,\n    Neighbor: r.neighbor,\n    Interface: r.interface,\n    Status: \"UNHEALTHY\"\n  }))\n  |> group()\n  |> sort(columns: [\n    \"Device\",\n    \"Protocol\",\n    \"Neighbor\",\n    \"Interface\"\n  ])\n"
+        }
+      ]
+    },
+    {
+      "id": 91,
+      "type": "row",
+      "title": "Routing Drill-Down",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Current Neighbor State",
+      "description": "Latest canonical session state for each routing adjacency matching the Device, Protocol, and Neighbor selectors.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "State"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ESTABLISHED": {
+                        "text": "ESTABLISHED",
+                        "color": "green"
+                      },
+                      "FULL": {
+                        "text": "FULL",
+                        "color": "green"
+                      },
+                      "UP": {
+                        "text": "UP",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "applyToRow": false
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last Seen"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 190
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Device"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Protocol"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "bgp": {
+                        "text": "BGP"
+                      },
+                      "ospfv2": {
+                        "text": "OSPFv2"
+                      },
+                      "ospfv3": {
+                        "text": "OSPFv3"
+                      },
+                      "isis": {
+                        "text": "IS-IS"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Neighbor"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Interface"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Address Family"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ipv4": {
+                        "text": "IPv4"
+                      },
+                      "ipv6": {
+                        "text": "IPv6"
+                      },
+                      "ipv4-unicast": {
+                        "text": "IPv4 Unicast"
+                      },
+                      "ipv6-unicast": {
+                        "text": "IPv6 Unicast"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Vendor"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "arista": {
+                        "text": "Arista"
+                      },
+                      "cisco": {
+                        "text": "Cisco"
+                      },
+                      "nokia": {
+                        "text": "Nokia"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(start: -2m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_neighbor_state\"\n  )\n  |> filter(fn: (r) =>\n    r._field == \"session_state\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.protocol =~ /^${protocol:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.neighbor =~ /^${neighbor:regex}$/\n  )\n  |> map(fn: (r) => ({\n    r with\n    interface:\n      if exists r.interface\n      then r.interface\n      else \"\",\n    address_family:\n      if exists r.address_family\n      then r.address_family\n      else \"\"\n  }))\n  |> group(columns: [\n    \"device\",\n    \"protocol\",\n    \"neighbor\",\n    \"interface\",\n    \"address_family\"\n  ])\n  |> last()\n  |> group()\n  |> keep(columns: [\n    \"_time\",\n    \"vendor\",\n    \"device\",\n    \"protocol\",\n    \"neighbor\",\n    \"interface\",\n    \"address_family\",\n    \"_value\"\n  ])\n  |> rename(columns: {\n    _time: \"Last Seen\",\n    vendor: \"Vendor\",\n    device: \"Device\",\n    protocol: \"Protocol\",\n    neighbor: \"Neighbor\",\n    interface: \"Interface\",\n    address_family: \"Address Family\",\n    _value: \"State\"\n  })\n  |> sort(columns: [\n    \"Device\",\n    \"Protocol\",\n    \"Neighbor\",\n    \"Interface\"\n  ])\n"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Neighbor Health History",
+      "description": "Routing adjacency health over the selected dashboard time range. 1 = healthy and 0 = unhealthy.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "UNHEALTHY",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "HEALTHY",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "barAlignment": 0,
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "spanNulls": false,
+            "insertNulls": false,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "Health",
+            "axisColorMode": "text",
+            "axisBorderShow": false,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "axisCenteredZero": false,
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "\nfrom(bucket: \"ana-lab\")\n  |> range(\n    start: v.timeRangeStart,\n    stop: v.timeRangeStop\n  )\n  |> filter(fn: (r) =>\n    r._measurement == \"net_neighbor_state\"\n  )\n  |> filter(fn: (r) =>\n    r._field == \"session_up\"\n  )\n  |> filter(fn: (r) =>\n    r.device != \"R5\"\n  )\n  |> filter(fn: (r) =>\n    r.device =~ /^${device:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.protocol =~ /^${protocol:regex}$/\n  )\n  |> filter(fn: (r) =>\n    r.neighbor =~ /^${neighbor:regex}$/\n  )\n  |> map(fn: (r) => ({\n    r with\n    interface:\n      if exists r.interface\n      then r.interface\n      else \"\"\n  }))\n  |> group(columns: [\n    \"device\",\n    \"protocol\",\n    \"neighbor\",\n    \"interface\"\n  ])\n  |> aggregateWindow(\n    every: v.windowPeriod,\n    fn: last,\n    createEmpty: false\n  )\n  |> map(fn: (r) => ({\n    _time: r._time,\n    _value: r._value,\n    _field:\n      r.device + \" \" +\n      r.protocol + \" \" +\n      r.neighbor +\n      (if r.interface != \"\"\n       then \" \" + r.interface\n       else \"\")\n  }))\n  |> group(columns: [\"_field\"])\n"
+        }
+      ]
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "description": "Routing control-plane health and drill-down for BGP, OSPFv2, OSPFv3, and IS-IS across the ANA lab."
+}

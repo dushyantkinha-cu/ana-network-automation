@@ -1,0 +1,12 @@
+[Unit]
+Description=Assemble simulated InfluxDB RAID1 storage
+After=local-fs.target
+Before=influxdb.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/setup-influx-raid1.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

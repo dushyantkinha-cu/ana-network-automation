@@ -1,0 +1,3 @@
+bolt-path = "/mnt/influxdb-raid1/influxdb/influxd.bolt"
+engine-path = "/mnt/influxdb-raid1/influxdb/engine"
+sqlite-path = "/mnt/influxdb-raid1/influxdb/influxd.sqlite"
