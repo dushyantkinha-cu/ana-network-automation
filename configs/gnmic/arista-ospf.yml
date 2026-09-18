@@ -1,0 +1,379 @@
+# ============================================================
+# Arista EOS Tier 3 - OSPFv2 / OSPFv3
+#
+# Telegraf inputs.gnmi cannot parse EOS "cli:" paths containing
+# spaces, so gNMIc performs these subscriptions and writes the
+# resulting vendor-specific adjacency measurements to InfluxDB.
+#
+# Monitored devices:
+#   R1  172.20.20.14
+#   R2  172.20.20.5
+#   S3  172.20.20.7
+# ============================================================
+
+
+targets:
+
+  R1:
+    address: 172.20.20.14:6030
+    username: ${ARISTA_USERNAME}
+    password: ${ARISTA_PASSWORD}
+    insecure: true
+
+    subscriptions:
+      - ospfv2
+      - ospfv3
+
+    outputs:
+      - influx_raw
+      - influx_canonical
+
+    event-tags:
+      device: R1
+      vendor: arista
+      mgmt_ip: 172.20.20.14
+
+
+  R2:
+    address: 172.20.20.5:6030
+    username: ${ARISTA_USERNAME}
+    password: ${ARISTA_PASSWORD}
+    insecure: true
+
+    subscriptions:
+      - ospfv2
+      - ospfv3
+
+    outputs:
+      - influx_raw
+      - influx_canonical
+
+    event-tags:
+      device: R2
+      vendor: arista
+      mgmt_ip: 172.20.20.5
+
+
+  S3:
+    address: 172.20.20.7:6030
+    username: ${ARISTA_USERNAME}
+    password: ${ARISTA_PASSWORD}
+    insecure: true
+
+    subscriptions:
+      - ospfv2
+      - ospfv3
+
+    outputs:
+      - influx_raw
+      - influx_canonical
+
+    event-tags:
+      device: S3
+      vendor: arista
+      mgmt_ip: 172.20.20.7
+
+
+# ============================================================
+# Subscriptions
+# ============================================================
+
+subscriptions:
+
+  ospfv2:
+    paths:
+      - "cli:/show ip ospf neighbor"
+    mode: stream
+    stream-mode: sample
+    sample-interval: 10s
+
+
+  ospfv3:
+    paths:
+      - "cli:/show ipv6 ospf neighbor"
+    mode: stream
+    stream-mode: sample
+    sample-interval: 10s
+
+
+# ============================================================
+# Event normalization
+#
+# Convert each EOS CLI neighbor-list entry into one event.
+#
+# Vendor-specific measurements retained in InfluxDB:
+#   arista_ospfv2_adj
+#   arista_ospfv3_adj
+# ============================================================
+
+processors:
+
+  normalize-ospf:
+    event-jq:
+      expression: |
+        .[] as $e
+        |
+        if $e.tags["subscription-name"] == "ospfv2" then
+          (
+            $e.values
+            | to_entries[]
+            | select(.key | test("/routerId$"))
+            | .key as $key
+            | (
+                $key
+                | capture(
+                    "^cli:/show ip ospf neighbor/vrfs/(?<vrf>[^/]+)/instList/(?<instance>[^/]+)/ospfNeighborEntries\\.(?<idx>[0-9]+)/routerId$"
+                  )
+              ) as $m
+            | (
+                "cli:/show ip ospf neighbor/vrfs/"
+                + $m.vrf
+                + "/instList/"
+                + $m.instance
+                + "/ospfNeighborEntries."
+                + $m.idx
+              ) as $base
+            | {
+                name: "arista_ospfv2_adj",
+                timestamp: $e.timestamp,
+
+                tags: {
+                  source: $e.tags.source,
+                  device: $e.tags.device,
+                  vendor: $e.tags.vendor,
+                  mgmt_ip: $e.tags.mgmt_ip,
+                  protocol: "ospfv2",
+                  vrf: $m.vrf,
+                  instance: $m.instance,
+                  router_id: $e.values[$base + "/routerId"],
+                  interface: $e.values[$base + "/interfaceName"]
+                },
+
+                values: (
+                  {
+                    adjacency_state:
+                      $e.values[$base + "/adjacencyState"],
+
+                    neighbor_address:
+                      $e.values[$base + "/interfaceAddress"],
+
+                    area_id:
+                      $e.values[$base + "/details/areaId"]
+                  }
+                  | with_entries(select(.value != null))
+                )
+              }
+          )
+
+        elif $e.tags["subscription-name"] == "ospfv3" then
+          (
+            $e.values
+            | to_entries[]
+            | select(.key | test("/routerId$"))
+            | .key as $key
+            | (
+                $key
+                | capture(
+                    "^cli:/show ipv6 ospf neighbor/vrfs/(?<vrf>[^/]+)/instList/(?<instance>[^/]+)/ospf3NeighborEntries\\.(?<idx>[0-9]+)/routerId$"
+                  )
+              ) as $m
+            | (
+                "cli:/show ipv6 ospf neighbor/vrfs/"
+                + $m.vrf
+                + "/instList/"
+                + $m.instance
+                + "/ospf3NeighborEntries."
+                + $m.idx
+              ) as $base
+            | {
+                name: "arista_ospfv3_adj",
+                timestamp: $e.timestamp,
+
+                tags: {
+                  source: $e.tags.source,
+                  device: $e.tags.device,
+                  vendor: $e.tags.vendor,
+                  mgmt_ip: $e.tags.mgmt_ip,
+                  protocol: "ospfv3",
+                  vrf: $m.vrf,
+                  instance: $m.instance,
+                  router_id: $e.values[$base + "/routerId"],
+                  interface: $e.values[$base + "/interfaceName"]
+                },
+
+                values: (
+                  {
+                    adjacency_state:
+                      $e.values[$base + "/adjacencyState"],
+
+                    area_id:
+                      $e.values[$base + "/areaId"]
+                  }
+                  | with_entries(select(.value != null))
+                )
+              }
+          )
+
+        else
+          empty
+        end
+
+
+  # Convert the already-normalized Arista OSPF event into the
+  # cross-vendor Tier 3 canonical measurement.
+  canonicalize-ospf:
+    event-jq:
+      expression: |
+        .[] as $e
+        |
+        if $e.name == "arista_ospfv2_adj" then
+          {
+            name: "net_neighbor_state",
+            timestamp: $e.timestamp,
+
+            tags: (
+              {
+                vendor: $e.tags.vendor,
+                device: $e.tags.device,
+                mgmt_ip: $e.tags.mgmt_ip,
+                protocol: "ospfv2",
+                neighbor: $e.tags.router_id,
+                interface: $e.tags.interface,
+                vrf: $e.tags.vrf,
+                address_family: "ipv4",
+                area: $e.values.area_id,
+                instance: $e.tags.instance
+              }
+              | with_entries(
+                  select(.value != null and .value != "")
+                )
+            ),
+
+            values: (
+              {
+                session_state: (
+                  if $e.values.adjacency_state == "full"
+                  then "FULL"
+                  else $e.values.adjacency_state
+                  end
+                ),
+
+                session_up: (
+                  if $e.values.adjacency_state == "full"
+                  then 1
+                  else 0
+                  end
+                ),
+
+                neighbor_address:
+                  $e.values.neighbor_address
+              }
+              | with_entries(
+                  select(.value != null)
+                )
+            )
+          }
+
+        elif $e.name == "arista_ospfv3_adj" then
+          {
+            name: "net_neighbor_state",
+            timestamp: $e.timestamp,
+
+            tags: (
+              {
+                vendor: $e.tags.vendor,
+                device: $e.tags.device,
+                mgmt_ip: $e.tags.mgmt_ip,
+                protocol: "ospfv3",
+                neighbor: $e.tags.router_id,
+                interface: $e.tags.interface,
+                vrf: $e.tags.vrf,
+                address_family: "ipv6",
+                area: $e.values.area_id,
+                instance: $e.tags.instance
+              }
+              | with_entries(
+                  select(.value != null and .value != "")
+                )
+            ),
+
+            values: {
+              session_state: (
+                if $e.values.adjacency_state == "full"
+                then "FULL"
+                else $e.values.adjacency_state
+                end
+              ),
+
+              session_up: (
+                if $e.values.adjacency_state == "full"
+                then 1
+                else 0
+                end
+              )
+            }
+          }
+
+        else
+          empty
+        end
+
+
+  # Explicitly force session_up to an integer so it has the
+  # same InfluxDB field type as the Telegraf-generated
+  # net_neighbor_state measurement.
+  canonical-session-up-int:
+    event-convert:
+      value-names:
+        - "^session_up$"
+      type: int
+
+
+# ============================================================
+# InfluxDB
+# ============================================================
+
+
+outputs:
+
+  # Preserve the existing raw vendor measurements.
+  influx_raw:
+    type: influxdb
+
+    url: http://127.0.0.1:8086
+    org: ana-lab
+    bucket: ana-lab
+
+    token: ${INFLUX_TOKEN}
+
+    batch-size: 100
+    flush-timer: 2s
+
+    timestamp-precision: ns
+    override-timestamps: false
+
+    event-processors:
+      - normalize-ospf
+
+
+  # Generate the common Tier 3 measurement from the exact same
+  # subscriptions without creating another gNMI session.
+  influx_canonical:
+    type: influxdb
+
+    url: http://127.0.0.1:8086
+    org: ana-lab
+    bucket: ana-lab
+
+    token: ${INFLUX_TOKEN}
+
+    batch-size: 100
+    flush-timer: 2s
+
+    timestamp-precision: ns
+    override-timestamps: false
+
+    event-processors:
+      - normalize-ospf
+      - canonicalize-ospf
+      - canonical-session-up-int
