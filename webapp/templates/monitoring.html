@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-heading">
+    <div>
+        <h1>Network Monitoring</h1>
+
+        <p>
+            Live telemetry and operational visibility
+            from the existing Grafana monitoring stack.
+        </p>
+    </div>
+
+    <a
+        href="{{ dashboard_url }}"
+        target="_blank"
+        rel="noopener"
+        class="button-secondary button-link"
+    >
+        Open in Grafana
+    </a>
+</div>
+
+
+<section class="monitoring-toolbar">
+
+    {% for key, dashboard in dashboards.items() %}
+
+    <a
+        href="/monitoring?view={{ key }}"
+        class="
+            monitoring-tab
+            {% if selected_view == key %}
+            monitoring-tab-active
+            {% endif %}
+        "
+    >
+        {{ dashboard.label }}
+    </a>
+
+    {% endfor %}
+
+</section>
+
+
+<section class="panel monitoring-panel">
+
+    <div class="panel-header monitoring-header">
+        <div>
+            <h2>
+                {{ selected_dashboard.label }}
+            </h2>
+
+            <span class="monitoring-note">
+                Grafana dashboard refreshes every 5 seconds.
+            </span>
+        </div>
+
+        <span class="live-badge">
+            LIVE
+        </span>
+    </div>
+
+
+    <div class="grafana-frame-wrapper">
+
+        <iframe
+            class="grafana-frame"
+            src="{{ dashboard_url }}"
+            title="{{ selected_dashboard.label }}"
+            loading="lazy"
+        >
+        </iframe>
+
+    </div>
+
+</section>
+
+{% endblock %}

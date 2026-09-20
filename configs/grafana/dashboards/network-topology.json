@@ -1,0 +1,231 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ana-lab-influx"
+      },
+      "gridPos": {
+        "h": 22,
+        "w": 23,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "_assistantHelp": "",
+        "builderModeActions": {},
+        "dotDiagram": "graph ANA_Lab {\n    graph [\n        layout=dot\n        rankdir=TB\n        splines=polyline\n        nodesep=1.2\n        ranksep=1.0\n    ];\n\n    node [\n        shape=box\n        style=\"rounded,filled\"\n        fillcolor=\"lightgray\"\n        fontname=\"Arial\"\n        fontsize=14\n        width=1.2\n        height=0.6\n    ];\n\n    edge [\n        fontname=\"Arial\"\n        fontsize=10\n        penwidth=2\n    ];\n\n    R3 [label=\"R3\\nCisco IOS-XE\"];\n    R4 [label=\"R4\\nCisco IOS-XE\"];\n\n    S3 [label=\"S3\\nArista EOS\"];\n    S4 [label=\"S4\\nNokia SR Linux\"];\n\n    R1 [label=\"R1\\nArista EOS\"];\n    R2 [label=\"R2\\nArista EOS\"];\n\n    S1 [label=\"S1\\nArista EOS\"];\n    S2 [label=\"S2\\nArista EOS\"];\n\n    R5 [\n        label=\"R5\\nArista EOS\\nEdge Router\"\n        shape=box\n        style=\"rounded,filled\"\n        fillcolor=\"#3a3f44\"\n        fontcolor=\"white\"\n    ];\n\n    WEB [\n        label=\"Web Server\\nnginx\"\n        shape=box\n        style=\"rounded,filled\"\n        fillcolor=\"#3a3f44\"\n        fontcolor=\"white\"\n    ];\n\n    H1 [\n        label=\"H1\\nVLAN 10\"\n        shape=box\n        style=\"rounded,filled\"\n        fillcolor=\"#3a3f44\"\n        fontcolor=\"white\"\n    ];\n\n    H2 [\n        label=\"H2\\nVLAN 20\"\n        shape=box\n        style=\"rounded,filled\"\n        fillcolor=\"#3a3f44\"\n        fontcolor=\"white\"\n    ];\n\n    H3 [\n        label=\"H3\\nVLAN 10\"\n        shape=box\n        style=\"rounded,filled\"\n        fillcolor=\"#3a3f44\"\n        fontcolor=\"white\"\n    ];\n\n    H4 [\n        label=\"H4\\nVLAN 30\"\n        shape=box\n        style=\"rounded,filled\"\n        fillcolor=\"#3a3f44\"\n        fontcolor=\"white\"\n    ];\n\n    { rank=same; R5; }\n    { rank=same; R3; R4; }\n    { rank=same; S3; S4; }\n    { rank=same; R1; R2; }\n    { rank=same; S1; S2; }\n    { rank=same; H1; H2; H3; H4; }\n\n    // ========================================================\n    // eBGP\n    // ========================================================\n\n    R5 -- R3 [\n        id=\"CTX-R5-R3\"\n        color=\"#777777\"\n        style=dashed\n        xlabel=\"eBGP\"\n        fontcolor=\"#ff4f9a\"\n        fontsize=10\n    ];\n\n    R5 -- R4 [\n        id=\"CTX-R5-R4\"\n        color=\"#777777\"\n        style=dashed\n        xlabel=\"eBGP\"\n        fontcolor=\"#ff4f9a\"\n        fontsize=10\n    ];\n\n    // ========================================================\n    // OSPFv2 + OSPFv3 - Area 0\n    // Actual edge color remains controlled dynamically by Grafana\n    // ========================================================\n\n    R3 -- R4 [\n        id=\"R3-R4\"\n        xlabel=\"OSPF\"\n        fontcolor=\"#4da3ff\"\n        fontsize=10\n    ];\n\n    R3 -- S3 [\n        id=\"R3-S3\"\n        xlabel=\"OSPF\"\n        fontcolor=\"#4da3ff\"\n        fontsize=10\n    ];\n\n    R4 -- S4 [\n        id=\"R4-S4\"\n        xlabel=\"OSPF\"\n        fontcolor=\"#4da3ff\"\n        fontsize=10\n    ];\n\n    S3 -- S4 [\n        id=\"S3-S4\"\n        xlabel=\"OSPF\"\n        fontcolor=\"#4da3ff\"\n        fontsize=10\n    ];\n\n    S3 -- R1 [\n        id=\"R1-S3\"\n        xlabel=\"OSPF\"\n        fontcolor=\"#4da3ff\"\n        fontsize=10\n    ];\n\n    S4 -- R2 [\n        id=\"R2-S4\"\n        xlabel=\"OSPF\"\n        fontcolor=\"#4da3ff\"\n        fontsize=10\n    ];\n\n    // ========================================================\n    // IS-IS\n    // Actual edge color remains controlled dynamically by Grafana\n    // ========================================================\n\n    R1 -- S1 [\n        id=\"R1-S1\"\n        xlabel=\"IS-IS\"\n        fontcolor=\"#39d353\"\n        fontsize=10\n    ];\n\n    R2 -- S2 [\n        id=\"R2-S2\"\n        xlabel=\"IS-IS\"\n        fontcolor=\"#39d353\"\n        fontsize=10\n    ];\n\n    S1 -- S2 [\n        id=\"S1-S2\"\n        xlabel=\"IS-IS\"\n        fontcolor=\"#39d353\"\n        fontsize=10\n    ];\n\n    // ========================================================\n    // Static context links\n    // ========================================================\n\n    R5 -- WEB [\n        id=\"CTX-R5-WEB\"\n        color=\"#777777\"\n    ];\n\n    S1 -- H1 [\n        id=\"CTX-S1-H1\"\n        color=\"#777777\"\n    ];\n\n    S1 -- H2 [\n        id=\"CTX-S1-H2\"\n        color=\"#777777\"\n    ];\n\n    S2 -- H3 [\n        id=\"CTX-S2-H3\"\n        color=\"#777777\"\n    ];\n\n    S2 -- H4 [\n        id=\"CTX-S2-H4\"\n        color=\"#777777\"\n    ];\n}",
+        "dotQueryConfig": {
+          "fieldName": "dot_diagram"
+        },
+        "edgeOverrides": [
+          {
+            "id": "edge-mapping-1789428731182",
+            "matchFieldName": "id",
+            "matchMode": "autodetect",
+            "matchPattern": "${id}",
+            "rules": [
+              {
+                "colorFieldName": "link_up",
+                "kind": "strokeColor",
+                "staticColor": "#FF0000",
+                "thresholdId": "threshold-1789429235553"
+              },
+              {
+                "content": {
+                  "templates": [
+                    "Link: ${source} \u2194 ${target}\nInterfaces: ${source_if} \u2194 ${target_if}\nStatus: ${link_status}\nRX: ${rx_display}\nTX: ${tx_display}\nTotal: ${total_display}"
+                  ]
+                },
+                "footer": {
+                  "links": []
+                },
+                "header": {
+                  "showId": false,
+                  "showTimestamp": false
+                },
+                "kind": "tooltip"
+              }
+            ],
+            "targetEdgeIds": [
+              "R3-R4",
+              "R3-S3",
+              "R4-S4",
+              "S3-S4",
+              "R1-S3",
+              "R2-S4",
+              "R1-S1",
+              "R2-S2",
+              "S1-S2"
+            ]
+          }
+        ],
+        "inputMode": "code",
+        "layoutEngine": "dot",
+        "namedThresholds": [
+          {
+            "id": "threshold-1789427472248",
+            "name": "Threshold 1",
+            "steps": [
+              {
+                "color": "#73BF69",
+                "value": 0
+              },
+              {
+                "color": "#FADE2A",
+                "value": 80
+              },
+              {
+                "color": "#F2495C",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "id": "threshold-1789429235553",
+            "name": "Link Health",
+            "steps": [
+              {
+                "color": "#F2495C",
+                "value": 0
+              },
+              {
+                "color": "#73BF69",
+                "value": 1
+              }
+            ]
+          }
+        ],
+        "nodeOverrides": [
+          {
+            "id": "node-mapping-1789427098913",
+            "matchFieldName": "device",
+            "matchMode": "autodetect",
+            "matchPattern": "${id}",
+            "rules": [
+              {
+                "colorFieldName": "cpu_util_pct",
+                "kind": "fillColor",
+                "staticColor": "#00FF00",
+                "thresholdId": "threshold-1789427472248"
+              },
+              {
+                "content": {
+                  "templates": [
+                    "Vendor: ${vendor}\nManagement IP: ${mgmt_ip}\nCPU: ${cpu_util_pct}%\nMemory: ${memory_util_pct}%\nUptime: ${uptime_human}"
+                  ]
+                },
+                "footer": {
+                  "links": []
+                },
+                "header": {
+                  "showId": true,
+                  "showTimestamp": false
+                },
+                "kind": "tooltip"
+              }
+            ],
+            "targetNodeIds": [
+              "R1",
+              "R2",
+              "R3",
+              "R4",
+              "S1",
+              "S2",
+              "S3",
+              "S4"
+            ]
+          }
+        ],
+        "rankDirection": "LR",
+        "splineType": "true"
+      },
+      "pluginVersion": "0.0.7",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "from(bucket: \"ana-lab\")\n  |> range(start: -2m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_device_health\" and\n    (\n      r._field == \"cpu_util_pct\" or\n      r._field == \"memory_util_pct\" or\n      r._field == \"uptime_seconds\"\n    ) and\n    r.device != \"R5\"\n  )\n  |> map(fn: (r) => ({\n    r with\n    _value: float(v: r._value)\n  }))\n  |> group()\n  |> pivot(\n    rowKey: [\"device\", \"vendor\", \"mgmt_ip\"],\n    columnKey: [\"_field\"],\n    valueColumn: \"_value\"\n  )\n  |> map(fn: (r) => ({\n    r with\n    uptime_human:\n      string(v: int(v: r.uptime_seconds) / 86400) + \"d \" +\n      string(v: (int(v: r.uptime_seconds) % 86400) / 3600) + \"h \" +\n      string(v: (int(v: r.uptime_seconds) % 3600) / 60) + \"m\"\n  }))",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "hide": true,
+          "query": "from(bucket: \"ana-lab\")\n  |> range(start: -10m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifstate\" and\n    r._field == \"oper_status\" and\n    r.device != \"R5\"\n  )\n  |> group(columns: [\"device\", \"interface\"])\n  |> last()\n\n|> map(fn: (r) => ({\n  r with\n  id:\n    if (\n      (r.device == \"R3\" and r.interface == \"GigabitEthernet2\") or\n      (r.device == \"R4\" and r.interface == \"GigabitEthernet2\")\n    ) then \"R3-R4\"\n\n    else if (\n      (r.device == \"R3\" and r.interface == \"GigabitEthernet4\") or\n      (r.device == \"S3\" and r.interface == \"Ethernet3\")\n    ) then \"R3-S3\"\n\n    else if (\n      (r.device == \"R4\" and r.interface == \"GigabitEthernet3\") or\n      (r.device == \"S4\" and r.interface == \"ethernet-1/2\")\n    ) then \"R4-S4\"\n\n    else if (\n      (r.device == \"S3\" and r.interface == \"Ethernet1\") or\n      (r.device == \"S4\" and r.interface == \"ethernet-1/1\")\n    ) then \"S3-S4\"\n\n    else if (\n      (r.device == \"R1\" and r.interface == \"Ethernet2\") or\n      (r.device == \"S3\" and r.interface == \"Ethernet2\")\n    ) then \"R1-S3\"\n\n    else if (\n      (r.device == \"R2\" and r.interface == \"Ethernet3\") or\n      (r.device == \"S4\" and r.interface == \"ethernet-1/3\")\n    ) then \"R2-S4\"\n\n    else if (\n      (r.device == \"R1\" and r.interface == \"Ethernet1\") or\n      (r.device == \"S1\" and r.interface == \"Ethernet1\")\n    ) then \"R1-S1\"\n\n    else if (\n      (r.device == \"R2\" and r.interface == \"Ethernet1\") or\n      (r.device == \"S2\" and r.interface == \"Ethernet1\")\n    ) then \"R2-S2\"\n\n    else if (\n      (r.device == \"S1\" and r.interface == \"Ethernet2\") or\n      (r.device == \"S2\" and r.interface == \"Ethernet2\")\n    ) then \"S1-S2\"\n\n    else \"\",\n\n  endpoint_up:\n    if r._value == \"UP\" then 1 else 0\n}))\n\n  |> filter(fn: (r) => r.id != \"\")\n  |> group(columns: [\"id\"])\n  |> sum(column: \"endpoint_up\")\n\n|> map(fn: (r) => ({\n  r with\n  link_up: if r.endpoint_up == 2 then 1 else 0\n}))\n\n|> map(fn: (r) => ({\n  r with\n\n  source:\n    if r.id == \"R1-S1\" then \"R1\"\n    else if r.id == \"R1-S3\" then \"R1\"\n    else if r.id == \"R2-S2\" then \"R2\"\n    else if r.id == \"R2-S4\" then \"R2\"\n    else if r.id == \"R3-R4\" then \"R3\"\n    else if r.id == \"R3-S3\" then \"R3\"\n    else if r.id == \"R4-S4\" then \"R4\"\n    else if r.id == \"S1-S2\" then \"S1\"\n    else if r.id == \"S3-S4\" then \"S3\"\n    else \"\",\n\n  target:\n    if r.id == \"R1-S1\" then \"S1\"\n    else if r.id == \"R1-S3\" then \"S3\"\n    else if r.id == \"R2-S2\" then \"S2\"\n    else if r.id == \"R2-S4\" then \"S4\"\n    else if r.id == \"R3-R4\" then \"R4\"\n    else if r.id == \"R3-S3\" then \"S3\"\n    else if r.id == \"R4-S4\" then \"S4\"\n    else if r.id == \"S1-S2\" then \"S2\"\n    else if r.id == \"S3-S4\" then \"S4\"\n    else \"\",\n\n  source_if:\n    if r.id == \"R1-S1\" then \"Ethernet1\"\n    else if r.id == \"R1-S3\" then \"Ethernet2\"\n    else if r.id == \"R2-S2\" then \"Ethernet1\"\n    else if r.id == \"R2-S4\" then \"Ethernet3\"\n    else if r.id == \"R3-R4\" then \"GigabitEthernet2\"\n    else if r.id == \"R3-S3\" then \"GigabitEthernet4\"\n    else if r.id == \"R4-S4\" then \"GigabitEthernet3\"\n    else if r.id == \"S1-S2\" then \"Ethernet2\"\n    else if r.id == \"S3-S4\" then \"Ethernet1\"\n    else \"\",\n\n  target_if:\n    if r.id == \"R1-S1\" then \"Ethernet1\"\n    else if r.id == \"R1-S3\" then \"Ethernet2\"\n    else if r.id == \"R2-S2\" then \"Ethernet1\"\n    else if r.id == \"R2-S4\" then \"ethernet-1/3\"\n    else if r.id == \"R3-R4\" then \"GigabitEthernet2\"\n    else if r.id == \"R3-S3\" then \"Ethernet3\"\n    else if r.id == \"R4-S4\" then \"ethernet-1/2\"\n    else if r.id == \"S1-S2\" then \"Ethernet2\"\n    else if r.id == \"S3-S4\" then \"ethernet-1/1\"\n    else \"\",\n\n  link_status:\n    if r.link_up == 1 then \"UP\" else \"DOWN\"\n}))\n\n|> group()\n|> sort(columns: [\"id\"])",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "hide": true,
+          "query": "from(bucket: \"ana-lab\")\n  |> range(start: -5m)\n  |> filter(fn: (r) =>\n    r._measurement == \"net_ifcounters\" and\n    (\n      r._field == \"in_octets\" or\n      r._field == \"out_octets\"\n    )\n  )\n\n  |> filter(fn: (r) =>\n    (r.device == \"R1\" and (r.interface == \"Ethernet1\" or r.interface == \"Ethernet2\")) or\n    (r.device == \"R2\" and (r.interface == \"Ethernet1\" or r.interface == \"Ethernet3\")) or\n    (r.device == \"R3\" and (r.interface == \"GigabitEthernet2\" or r.interface == \"GigabitEthernet4\")) or\n    (r.device == \"R4\" and r.interface == \"GigabitEthernet3\") or\n    (r.device == \"S1\" and r.interface == \"Ethernet2\") or\n    (r.device == \"S3\" and r.interface == \"Ethernet1\")\n  )\n\n  |> aggregateWindow(\n    every: 10s,\n    fn: last,\n    createEmpty: false\n  )\n\n  |> derivative(\n    unit: 1s,\n    nonNegative: true\n  )\n\n  |> map(fn: (r) => ({\n    r with\n    _value: float(v: r._value) * 8.0\n  }))\n\n  |> group(columns: [\"device\", \"interface\", \"_field\"])\n  |> last()\n  |> group()\n\n  |> pivot(\n    rowKey: [\"device\", \"interface\"],\n    columnKey: [\"_field\"],\n    valueColumn: \"_value\"\n  )\n\n  |> map(fn: (r) => ({\n    r with\n    id:\n      if r.device == \"R1\" and r.interface == \"Ethernet1\" then \"R1-S1\"\n      else if r.device == \"R1\" and r.interface == \"Ethernet2\" then \"R1-S3\"\n      else if r.device == \"R2\" and r.interface == \"Ethernet1\" then \"R2-S2\"\n      else if r.device == \"R2\" and r.interface == \"Ethernet3\" then \"R2-S4\"\n      else if r.device == \"R3\" and r.interface == \"GigabitEthernet2\" then \"R3-R4\"\n      else if r.device == \"R3\" and r.interface == \"GigabitEthernet4\" then \"R3-S3\"\n      else if r.device == \"R4\" and r.interface == \"GigabitEthernet3\" then \"R4-S4\"\n      else if r.device == \"S1\" and r.interface == \"Ethernet2\" then \"S1-S2\"\n      else if r.device == \"S3\" and r.interface == \"Ethernet1\" then \"S3-S4\"\n      else \"\",\n\n    rx_bps: r.in_octets,\n    tx_bps: r.out_octets,\n    total_bps: r.in_octets + r.out_octets\n  }))\n\n  |> filter(fn: (r) => r.id != \"\")\n  |> keep(columns: [\n    \"id\",\n    \"device\",\n    \"interface\",\n    \"rx_bps\",\n    \"tx_bps\",\n    \"total_bps\"\n  ])\n  |> sort(columns: [\"id\"])",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "ana-lab-influx"
+          },
+          "query": "// ============================================================\n// LINK HEALTH\n// ============================================================\nimport \"math\"\nhealth =\n  from(bucket: \"ana-lab\")\n    |> range(start: -10m)\n    |> filter(fn: (r) =>\n      r._measurement == \"net_ifstate\" and\n      r._field == \"oper_status\" and\n      r.device != \"R5\"\n    )\n    |> group(columns: [\"device\", \"interface\"])\n    |> last()\n\n    |> map(fn: (r) => ({\n      r with\n\n      id:\n        if (\n          (r.device == \"R3\" and r.interface == \"GigabitEthernet2\") or\n          (r.device == \"R4\" and r.interface == \"GigabitEthernet2\")\n        ) then \"R3-R4\"\n\n        else if (\n          (r.device == \"R3\" and r.interface == \"GigabitEthernet4\") or\n          (r.device == \"S3\" and r.interface == \"Ethernet3\")\n        ) then \"R3-S3\"\n\n        else if (\n          (r.device == \"R4\" and r.interface == \"GigabitEthernet3\") or\n          (r.device == \"S4\" and r.interface == \"ethernet-1/2\")\n        ) then \"R4-S4\"\n\n        else if (\n          (r.device == \"S3\" and r.interface == \"Ethernet1\") or\n          (r.device == \"S4\" and r.interface == \"ethernet-1/1\")\n        ) then \"S3-S4\"\n\n        else if (\n          (r.device == \"R1\" and r.interface == \"Ethernet2\") or\n          (r.device == \"S3\" and r.interface == \"Ethernet2\")\n        ) then \"R1-S3\"\n\n        else if (\n          (r.device == \"R2\" and r.interface == \"Ethernet3\") or\n          (r.device == \"S4\" and r.interface == \"ethernet-1/3\")\n        ) then \"R2-S4\"\n\n        else if (\n          (r.device == \"R1\" and r.interface == \"Ethernet1\") or\n          (r.device == \"S1\" and r.interface == \"Ethernet1\")\n        ) then \"R1-S1\"\n\n        else if (\n          (r.device == \"R2\" and r.interface == \"Ethernet1\") or\n          (r.device == \"S2\" and r.interface == \"Ethernet1\")\n        ) then \"R2-S2\"\n\n        else if (\n          (r.device == \"S1\" and r.interface == \"Ethernet2\") or\n          (r.device == \"S2\" and r.interface == \"Ethernet2\")\n        ) then \"S1-S2\"\n\n        else \"\",\n\n      endpoint_up:\n        if r._value == \"UP\" then 1 else 0\n    }))\n\n    |> filter(fn: (r) => r.id != \"\")\n    |> group(columns: [\"id\"])\n    |> sum(column: \"endpoint_up\")\n\n    |> map(fn: (r) => ({\n      r with\n\n      link_up:\n        if r.endpoint_up == 2 then 1 else 0,\n\n      source:\n        if r.id == \"R1-S1\" then \"R1\"\n        else if r.id == \"R1-S3\" then \"R1\"\n        else if r.id == \"R2-S2\" then \"R2\"\n        else if r.id == \"R2-S4\" then \"R2\"\n        else if r.id == \"R3-R4\" then \"R3\"\n        else if r.id == \"R3-S3\" then \"R3\"\n        else if r.id == \"R4-S4\" then \"R4\"\n        else if r.id == \"S1-S2\" then \"S1\"\n        else if r.id == \"S3-S4\" then \"S3\"\n        else \"\",\n\n      target:\n        if r.id == \"R1-S1\" then \"S1\"\n        else if r.id == \"R1-S3\" then \"S3\"\n        else if r.id == \"R2-S2\" then \"S2\"\n        else if r.id == \"R2-S4\" then \"S4\"\n        else if r.id == \"R3-R4\" then \"R4\"\n        else if r.id == \"R3-S3\" then \"S3\"\n        else if r.id == \"R4-S4\" then \"S4\"\n        else if r.id == \"S1-S2\" then \"S2\"\n        else if r.id == \"S3-S4\" then \"S4\"\n        else \"\",\n\n      source_if:\n        if r.id == \"R1-S1\" then \"Ethernet1\"\n        else if r.id == \"R1-S3\" then \"Ethernet2\"\n        else if r.id == \"R2-S2\" then \"Ethernet1\"\n        else if r.id == \"R2-S4\" then \"Ethernet3\"\n        else if r.id == \"R3-R4\" then \"GigabitEthernet2\"\n        else if r.id == \"R3-S3\" then \"GigabitEthernet4\"\n        else if r.id == \"R4-S4\" then \"GigabitEthernet3\"\n        else if r.id == \"S1-S2\" then \"Ethernet2\"\n        else if r.id == \"S3-S4\" then \"Ethernet1\"\n        else \"\",\n\n      target_if:\n        if r.id == \"R1-S1\" then \"Ethernet1\"\n        else if r.id == \"R1-S3\" then \"Ethernet2\"\n        else if r.id == \"R2-S2\" then \"Ethernet1\"\n        else if r.id == \"R2-S4\" then \"ethernet-1/3\"\n        else if r.id == \"R3-R4\" then \"GigabitEthernet2\"\n        else if r.id == \"R3-S3\" then \"Ethernet3\"\n        else if r.id == \"R4-S4\" then \"ethernet-1/2\"\n        else if r.id == \"S1-S2\" then \"Ethernet2\"\n        else if r.id == \"S3-S4\" then \"ethernet-1/1\"\n        else \"\",\n\n      link_status:\n        if r.endpoint_up == 2 then \"UP\" else \"DOWN\"\n    }))\n\n    |> keep(columns: [\n      \"id\",\n      \"endpoint_up\",\n      \"link_up\",\n      \"source\",\n      \"target\",\n      \"source_if\",\n      \"target_if\",\n      \"link_status\"\n    ])\n    |> group()\n\n\n// ============================================================\n// LINK TRAFFIC\n// ============================================================\n\ntraffic =\n  from(bucket: \"ana-lab\")\n    |> range(start: -5m)\n    |> filter(fn: (r) =>\n      r._measurement == \"net_ifcounters\" and\n      (\n        r._field == \"in_octets\" or\n        r._field == \"out_octets\"\n      )\n    )\n\n    |> filter(fn: (r) =>\n      (r.device == \"R1\" and\n        (r.interface == \"Ethernet1\" or r.interface == \"Ethernet2\")) or\n\n      (r.device == \"R2\" and\n        (r.interface == \"Ethernet1\" or r.interface == \"Ethernet3\")) or\n\n      (r.device == \"R3\" and\n        (r.interface == \"GigabitEthernet2\" or\n         r.interface == \"GigabitEthernet4\")) or\n\n      (r.device == \"R4\" and\n        r.interface == \"GigabitEthernet3\") or\n\n      (r.device == \"S1\" and\n        r.interface == \"Ethernet2\") or\n\n      (r.device == \"S3\" and\n        r.interface == \"Ethernet1\")\n    )\n\n    |> aggregateWindow(\n      every: 10s,\n      fn: last,\n      createEmpty: false\n    )\n\n    |> derivative(\n      unit: 1s,\n      nonNegative: true\n    )\n\n    |> map(fn: (r) => ({\n      r with\n      _value: float(v: r._value) * 8.0\n    }))\n\n    |> group(columns: [\"device\", \"interface\", \"_field\"])\n    |> last()\n    |> group()\n\n    |> pivot(\n      rowKey: [\"device\", \"interface\"],\n      columnKey: [\"_field\"],\n      valueColumn: \"_value\"\n    )\n\n    |> map(fn: (r) => ({\n      r with\n\n      id:\n        if r.device == \"R1\" and r.interface == \"Ethernet1\"\n          then \"R1-S1\"\n\n        else if r.device == \"R1\" and r.interface == \"Ethernet2\"\n          then \"R1-S3\"\n\n        else if r.device == \"R2\" and r.interface == \"Ethernet1\"\n          then \"R2-S2\"\n\n        else if r.device == \"R2\" and r.interface == \"Ethernet3\"\n          then \"R2-S4\"\n\n        else if r.device == \"R3\" and r.interface == \"GigabitEthernet2\"\n          then \"R3-R4\"\n\n        else if r.device == \"R3\" and r.interface == \"GigabitEthernet4\"\n          then \"R3-S3\"\n\n        else if r.device == \"R4\" and r.interface == \"GigabitEthernet3\"\n          then \"R4-S4\"\n\n        else if r.device == \"S1\" and r.interface == \"Ethernet2\"\n          then \"S1-S2\"\n\n        else if r.device == \"S3\" and r.interface == \"Ethernet1\"\n          then \"S3-S4\"\n\n        else \"\",\n\n      rx_bps: r.in_octets,\n      tx_bps: r.out_octets,\n      total_bps: r.in_octets + r.out_octets\n    }))\n\n    |> filter(fn: (r) => r.id != \"\")\n    |> keep(columns: [\n      \"id\",\n      \"rx_bps\",\n      \"tx_bps\",\n      \"total_bps\"\n    ])\n    |> group()\n\n\n// ============================================================\n// COMBINE HEALTH + TRAFFIC\n// ============================================================\n\njoin(\n  tables: {\n    health: health,\n    traffic: traffic\n  },\n  on: [\"id\"],\n  method: \"inner\"\n)\n    |> map(fn: (r) => ({\n    r with\n\n    rx_display:\n      if r.rx_bps >= 1000000.0 then\n        string(v: int(v: math.round(x: r.rx_bps / 1000000.0))) + \" Mb/s\"\n      else if r.rx_bps >= 1000.0 then\n        string(v: int(v: math.round(x: r.rx_bps / 1000.0))) + \" Kb/s\"\n      else\n        string(v: int(v: math.round(x: r.rx_bps))) + \" bps\",\n\n    tx_display:\n      if r.tx_bps >= 1000000.0 then\n        string(v: int(v: math.round(x: r.tx_bps / 1000000.0))) + \" Mb/s\"\n      else if r.tx_bps >= 1000.0 then\n        string(v: int(v: math.round(x: r.tx_bps / 1000.0))) + \" Kb/s\"\n      else\n        string(v: int(v: math.round(x: r.tx_bps))) + \" bps\",\n\n    total_display:\n      if r.total_bps >= 1000000.0 then\n        string(v: int(v: math.round(x: r.total_bps / 1000000.0))) + \" Mb/s\"\n      else if r.total_bps >= 1000.0 then\n        string(v: int(v: math.round(x: r.total_bps / 1000.0))) + \" Kb/s\"\n      else\n        string(v: int(v: math.round(x: r.total_bps))) + \" bps\"\n  }))\n  |> keep(columns: [\n    \"id\",\n    \"source\",\n    \"target\",\n    \"source_if\",\n    \"target_if\",\n    \"endpoint_up\",\n    \"link_up\",\n    \"link_status\",\n    \"rx_bps\",\n    \"tx_bps\",\n    \"total_bps\"\n    \"rx_display\",\n    \"tx_display\",\n    \"total_display\"\n  ])\n  |> sort(columns: [\"id\"])",
+          "refId": "D"
+        }
+      ],
+      "title": "Live Network Topology",
+      "type": "grafana-graphviz-panel"
+    }
+  ],
+  "preload": false,
+  "refresh": "",
+  "schemaVersion": 42,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "browser",
+  "title": "Network Topology",
+  "uid": "adqzdvd",
+  "version": 1
+}
