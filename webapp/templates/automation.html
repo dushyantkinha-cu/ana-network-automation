@@ -13,6 +13,18 @@
     </div>
 </div>
 
+{% if action_message %}
+<div
+    class="alert
+    {% if action_status == 'success' %}
+    alert-success
+    {% else %}
+    alert-error
+    {% endif %}">
+    {{ action_message }}
+</div>
+{% endif %}
+
 
 <div class="cards">
 
@@ -85,6 +97,25 @@
 
     <div class="panel-header">
         <h2>Validation Pipeline</h2>
+    </div>
+
+    <div class="action-bar">
+        <form
+            method="post"
+            action="/automation/validate"
+        >
+            <button
+                type="submit"
+                class="button-primary"
+            >
+                Run Full Validation
+            </button>
+        </form>
+
+        <span class="action-note">
+            Read-only: renders intent, collects live configs,
+            checks intended paths, and detects scoped drift.
+        </span>
     </div>
 
     {% if report %}

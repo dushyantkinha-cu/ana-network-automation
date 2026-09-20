@@ -275,3 +275,49 @@ footer {
     color: #4b5563;
     line-height: 1.8;
 }
+
+.action-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.button-primary {
+    border: 0;
+    border-radius: 6px;
+    background: #1d4ed8;
+    color: white;
+    padding: 10px 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.button-primary:hover {
+    background: #1e40af;
+}
+
+.action-note {
+    color: #6b7280;
+    font-size: 13px;
+}
+
+.alert {
+    border-radius: 7px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    font-weight: 600;
+}
+
+.alert-success {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #047857;
+}
+
+.alert-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+}

@@ -7,8 +7,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -18,6 +19,7 @@ WEBAPP_DIR = Path(__file__).resolve().parent
 AUTOMATION_DIR = REPO_ROOT / "automation"
 
 INVENTORY_SCRIPT = AUTOMATION_DIR / "netbox_inventory.py"
+VALIDATION_SCRIPT = AUTOMATION_DIR / "run_validation.py"
 
 VALIDATION_DIR = REPO_ROOT / "validation-reports"
 GOLDEN_DIR = REPO_ROOT / "golden-configs"
@@ -78,6 +80,24 @@ def get_devices():
     inventory = load_inventory()
     return inventory.get("devices", [])
 
+def run_validation():
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(VALIDATION_SCRIPT),
+            "--details",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=os.environ,
+    )
+
+    return {
+        "returncode": result.returncode,
+        "stdout": result.stdout.strip(),
+        "stderr": result.stderr.strip(),
+    }
 
 def latest_validation_report():
     reports = sorted(
@@ -254,9 +274,12 @@ def inventory_page(request: Request):
         },
     )
 
-
 @app.get("/automation")
-def automation_page(request: Request):
+def automation_page(
+    request: Request,
+    status: str | None = None,
+    message: str | None = None,
+):
     try:
         devices = get_devices()
     except RuntimeError as exc:
@@ -293,5 +316,34 @@ def automation_page(request: Request):
             "golden_snapshots": snapshots,
             "latest_golden": latest_golden,
             "netbox_url": NETBOX_URL,
+            "action_status": status,
+            "action_message": message,
         },
+    )
+
+@app.post("/automation/validate")
+def run_validation_action():
+    result = run_validation()
+
+    if result["returncode"] == 0:
+        status = "success"
+        message = (
+            "Validation completed successfully. "
+            "All managed devices passed."
+        )
+    else:
+        status = "error"
+
+        message = (
+            "Validation failed. Review the latest "
+            "validation report and server logs."
+        )
+
+    return RedirectResponse(
+        url=(
+            "/automation"
+            f"?status={quote(status)}"
+            f"&message={quote(message)}"
+        ),
+        status_code=303,
     )
