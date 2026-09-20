@@ -19,6 +19,9 @@ AUTOMATION_DIR = REPO_ROOT / "automation"
 
 INVENTORY_SCRIPT = AUTOMATION_DIR / "netbox_inventory.py"
 
+VALIDATION_DIR = REPO_ROOT / "validation-reports"
+GOLDEN_DIR = REPO_ROOT / "golden-configs"
+
 STATIC_DIR = WEBAPP_DIR / "static"
 TEMPLATE_DIR = WEBAPP_DIR / "templates"
 
@@ -34,7 +37,7 @@ app = FastAPI(
         "Network source-of-truth, validation, "
         "and automation portal."
     ),
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.mount(
@@ -74,6 +77,106 @@ def load_inventory():
 def get_devices():
     inventory = load_inventory()
     return inventory.get("devices", [])
+
+
+def latest_validation_report():
+    reports = sorted(
+        VALIDATION_DIR.glob("validation-*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+
+    if not reports:
+        return None
+
+    path = reports[0]
+
+    try:
+        with path.open() as f:
+            report = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    return {
+        "path": path,
+        "name": path.name,
+        "data": report,
+    }
+
+
+def validation_step_status(report):
+    if not report:
+        return {}
+
+    steps = report.get("steps", {})
+
+    statuses = {}
+
+    render = steps.get("render")
+
+    if isinstance(render, list):
+        statuses["render"] = all(
+            item.get("returncode") == 0
+            for item in render
+        )
+    else:
+        statuses["render"] = False
+
+    for step_name in (
+        "collect",
+        "intent_validation",
+        "drift",
+    ):
+        step = steps.get(step_name)
+
+        if not isinstance(step, dict):
+            statuses[step_name] = False
+            continue
+
+        if step.get("skipped"):
+            statuses[step_name] = None
+        else:
+            statuses[step_name] = (
+                step.get("returncode") == 0
+            )
+
+    return statuses
+
+
+def golden_snapshots():
+    if not GOLDEN_DIR.exists():
+        return []
+
+    snapshots = []
+
+    for path in GOLDEN_DIR.iterdir():
+        if not path.is_dir():
+            continue
+
+        manifest_path = path / "manifest.json"
+
+        if not manifest_path.is_file():
+            continue
+
+        try:
+            with manifest_path.open() as f:
+                manifest = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        snapshots.append(
+            {
+                "snapshot_id": path.name,
+                "path": path,
+                "manifest": manifest,
+            }
+        )
+
+    return sorted(
+        snapshots,
+        key=lambda item: item["snapshot_id"],
+        reverse=True,
+    )
 
 
 @app.get("/health")
@@ -147,6 +250,48 @@ def inventory_page(request: Request):
         context={
             "page_title": "Managed Inventory",
             "devices": devices,
+            "netbox_url": NETBOX_URL,
+        },
+    )
+
+
+@app.get("/automation")
+def automation_page(request: Request):
+    try:
+        devices = get_devices()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    validation = latest_validation_report()
+
+    report = (
+        validation["data"]
+        if validation
+        else None
+    )
+
+    snapshots = golden_snapshots()
+
+    latest_golden = (
+        snapshots[0]
+        if snapshots
+        else None
+    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="automation.html",
+        context={
+            "page_title": "Automation",
+            "devices": devices,
+            "validation": validation,
+            "report": report,
+            "step_status": validation_step_status(report),
+            "golden_snapshots": snapshots,
+            "latest_golden": latest_golden,
             "netbox_url": NETBOX_URL,
         },
     )

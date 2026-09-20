@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-heading">
+    <div>
+        <h1>Automation Status</h1>
+
+        <p>
+            Validation, drift detection, and golden
+            configuration state.
+        </p>
+    </div>
+</div>
+
+
+<div class="cards">
+
+    <div class="card">
+        <span class="card-label">
+            Managed Devices
+        </span>
+
+        <span class="card-value">
+            {{ devices | length }}
+        </span>
+    </div>
+
+
+    <div
+        class="card
+        {% if report and report.overall_status == 'pass' %}
+        good
+        {% endif %}"
+    >
+        <span class="card-label">
+            Latest Validation
+        </span>
+
+        <span class="card-value status-text">
+            {% if report %}
+                {{ report.overall_status | upper }}
+            {% else %}
+                NONE
+            {% endif %}
+        </span>
+
+        {% if report %}
+        <span class="card-note">
+            {{ report.timestamp_utc }}
+        </span>
+        {% endif %}
+    </div>
+
+
+    <div class="card">
+        <span class="card-label">
+            Golden Snapshots
+        </span>
+
+        <span class="card-value">
+            {{ golden_snapshots | length }}
+        </span>
+    </div>
+
+
+    <div class="card">
+        <span class="card-label">
+            Latest Golden
+        </span>
+
+        <span class="card-value snapshot-value">
+            {% if latest_golden %}
+                {{ latest_golden.snapshot_id }}
+            {% else %}
+                NONE
+            {% endif %}
+        </span>
+    </div>
+
+</div>
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Validation Pipeline</h2>
+    </div>
+
+    {% if report %}
+
+    <div class="validation-grid">
+
+        <div class="validation-item">
+            <span>Render Intended Configs</span>
+
+            {% if step_status.render %}
+                <span class="status-pass">PASS</span>
+            {% else %}
+                <span class="status-fail">FAIL</span>
+            {% endif %}
+        </div>
+
+
+        <div class="validation-item">
+            <span>Collect Live Configs</span>
+
+            {% if step_status.collect is none %}
+                <span class="status-skip">SKIPPED</span>
+            {% elif step_status.collect %}
+                <span class="status-pass">PASS</span>
+            {% else %}
+                <span class="status-fail">FAIL</span>
+            {% endif %}
+        </div>
+
+
+        <div class="validation-item">
+            <span>Validate Intended Paths</span>
+
+            {% if step_status.intent_validation %}
+                <span class="status-pass">PASS</span>
+            {% else %}
+                <span class="status-fail">FAIL</span>
+            {% endif %}
+        </div>
+
+
+        <div class="validation-item">
+            <span>Scoped Drift Check</span>
+
+            {% if step_status.drift %}
+                <span class="status-pass">PASS</span>
+            {% else %}
+                <span class="status-fail">FAIL</span>
+            {% endif %}
+        </div>
+
+    </div>
+
+    <div class="report-meta">
+        <strong>Scope:</strong>
+        {{ report.scope }}
+
+        <br>
+
+        <strong>Report:</strong>
+        <code>{{ validation.name }}</code>
+    </div>
+
+    {% else %}
+
+    <p>
+        No validation report is currently available.
+    </p>
+
+    {% endif %}
+
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Golden Configuration History</h2>
+    </div>
+
+    {% if golden_snapshots %}
+
+    <table>
+        <thead>
+            <tr>
+                <th>Snapshot</th>
+                <th>Created</th>
+                <th>Validation</th>
+                <th>Git Commit</th>
+                <th>Devices</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for snapshot in golden_snapshots %}
+
+            <tr>
+                <td>
+                    <strong>
+                        {{ snapshot.snapshot_id }}
+                    </strong>
+                </td>
+
+                <td>
+                    {{ snapshot.manifest.created_at_utc }}
+                </td>
+
+                <td>
+                    <span class="status-pass">
+                        {{ snapshot.manifest.validation.overall_status
+                           | upper }}
+                    </span>
+                </td>
+
+                <td>
+                    <code>
+                        {{ snapshot.manifest.git.commit[:8] }}
+                    </code>
+                </td>
+
+                <td>
+                    {{ snapshot.manifest.devices | length }}
+                </td>
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+    </table>
+
+    {% else %}
+
+    <p>
+        No golden configuration snapshots exist.
+    </p>
+
+    {% endif %}
+
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Safety Boundary</h2>
+    </div>
+
+    <p>
+        Automation actions are limited to devices marked
+        <code>automation_managed=true</code> in NetBox.
+    </p>
+
+    <p>
+        The provider-owned R5 device is intentionally excluded
+        from rendering, live collection, validation, drift
+        detection, and golden configuration promotion.
+    </p>
+
+</section>
+
+{% endblock %}
