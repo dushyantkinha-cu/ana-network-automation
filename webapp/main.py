@@ -98,6 +98,20 @@ def get_devices():
     return inventory.get("devices", [])
 
 
+def get_sites():
+    data = netbox_get(
+        "/api/dcim/sites/?limit=0"
+    )
+
+    return [
+        {
+            "id": site["id"],
+            "name": site["name"],
+        }
+        for site in data.get("results", [])
+    ]
+
+
 def netbox_headers():
     token = os.environ.get("NETBOX_TOKEN")
 
@@ -562,6 +576,8 @@ def changes_page(
             PROFILE_CHOICE_SET_ID
         )
 
+        sites = get_sites()
+
     except RuntimeError as exc:
         raise HTTPException(
             status_code=503,
@@ -644,6 +660,7 @@ def changes_page(
             "compatible_profiles": compatible_profiles,
             "template_path": template_path,
             "wan_state": wan_state,
+            "sites": sites,
             "action_status": status,
             "action_message": message,
             "netbox_url": NETBOX_URL,
@@ -918,6 +935,96 @@ async def update_wan_addresses(request: Request):
     message = (
         f"WAN addresses for {hostname} "
         "were updated successfully in NetBox."
+    )
+
+    return RedirectResponse(
+        url=(
+            "/changes"
+            f"?device={quote(hostname)}"
+            "&status=success"
+            f"&message={quote(message)}"
+        ),
+        status_code=303,
+    )
+
+
+@app.post("/changes/update-metadata")
+async def update_device_metadata(request: Request):
+    form = await request.form()
+
+    hostname = str(
+        form.get("hostname", "")
+    ).strip()
+
+    site_value = str(
+        form.get("site_id", "")
+    ).strip()
+
+    try:
+        device = find_managed_device(hostname)
+
+        if (
+            device is None
+            or device.get(
+                "automation_managed"
+            ) is not True
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Device is outside managed "
+                    "automation scope."
+                ),
+            )
+
+        try:
+            site_id = int(site_value)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid site selection.",
+            ) from exc
+
+        sites = get_sites()
+
+        valid_site_ids = {
+            site["id"]
+            for site in sites
+        }
+
+        if site_id not in valid_site_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="Selected site does not exist.",
+            )
+
+        device_id = device.get("device_id")
+
+        if not device_id:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Managed device has no "
+                    "NetBox device ID."
+                ),
+            )
+
+        netbox_patch(
+            f"/api/dcim/devices/{device_id}/",
+            {
+                "site": site_id,
+            },
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    message = (
+        f"Device metadata for {hostname} "
+        "was updated successfully in NetBox."
     )
 
     return RedirectResponse(

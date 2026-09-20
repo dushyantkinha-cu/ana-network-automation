@@ -168,6 +168,125 @@
 <section class="panel">
 
     <div class="panel-header">
+        <h2>Device Metadata</h2>
+    </div>
+
+    <form
+        method="post"
+        action="/changes/update-metadata"
+        class="intent-form"
+    >
+
+        <input
+            type="hidden"
+            name="hostname"
+            value="{{ selected_device.hostname }}"
+        >
+
+
+        <div class="form-field">
+
+            <label for="site_id">
+                Site
+            </label>
+
+            <select
+                id="site_id"
+                name="site_id"
+                required
+            >
+
+                {% for site in sites %}
+
+                <option
+                    value="{{ site.id }}"
+                    {% if raw_device.site
+                          and raw_device.site.id
+                              == site.id %}
+                    selected
+                    {% endif %}
+                >
+                    {{ site.name }}
+                </option>
+
+                {% endfor %}
+
+            </select>
+
+        </div>
+
+
+        <div class="metadata-readonly-grid">
+
+            <div>
+                <span class="detail-label">
+                    Vendor
+                </span>
+
+                <strong>
+                    {{ raw_device.device_type.manufacturer.name }}
+                </strong>
+            </div>
+
+
+            <div>
+                <span class="detail-label">
+                    Device Type
+                </span>
+
+                <strong>
+                    {{ raw_device.device_type.model }}
+                </strong>
+            </div>
+
+
+            <div>
+                <span class="detail-label">
+                    Platform
+                </span>
+
+                <strong>
+                    {{ raw_device.platform.name }}
+                </strong>
+            </div>
+
+
+            <div>
+                <span class="detail-label">
+                    Role
+                </span>
+
+                <strong>
+                    {{ raw_device.role.name }}
+                </strong>
+            </div>
+
+        </div>
+
+
+        <span class="field-help">
+            Vendor, device type, platform, and role are
+            shown for context. Cross-vendor changes are
+            handled through the new-device workflow so
+            NetBox relationships remain consistent.
+        </span>
+
+
+        <button
+            type="submit"
+            class="button-primary"
+        >
+            Save Device Metadata
+        </button>
+
+    </form>
+
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-header">
         <h2>Edit Automation Intent</h2>
     </div>
 
