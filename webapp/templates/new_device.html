@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-heading">
+    <div>
+        <h1>Add Network Device</h1>
+
+        <p>
+            Create a staged NetBox device without
+            immediately adding it to automation scope.
+        </p>
+    </div>
+
+    <a
+        href="/changes"
+        class="button-secondary button-link"
+    >
+        Back to Changes
+    </a>
+</div>
+
+
+{% if action_message %}
+
+<div
+    class="alert
+    {% if action_status == 'success' %}
+    alert-success
+    {% else %}
+    alert-error
+    {% endif %}"
+>
+    {{ action_message }}
+</div>
+
+{% endif %}
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>New Device</h2>
+    </div>
+
+    <form
+        method="post"
+        action="/changes/new"
+        class="intent-form"
+    >
+
+        <div class="form-field">
+            <label for="hostname">
+                Hostname
+            </label>
+
+            <input
+                id="hostname"
+                name="hostname"
+                type="text"
+                required
+            >
+        </div>
+
+
+        <div class="form-field">
+            <label for="site_id">
+                Site
+            </label>
+
+            <select
+                id="site_id"
+                name="site_id"
+                required
+            >
+                {% for site in sites %}
+                <option value="{{ site.id }}">
+                    {{ site.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+
+        <div class="form-field">
+            <label for="vendor_id">
+                Vendor
+            </label>
+
+            <select
+                id="vendor_id"
+                name="vendor_id"
+                required
+            >
+                {% for vendor in vendors %}
+                <option value="{{ vendor.id }}">
+                    {{ vendor.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+
+        <div class="form-field">
+            <label for="device_type_id">
+                Device Type
+            </label>
+
+            <select
+                id="device_type_id"
+                name="device_type_id"
+                required
+            >
+                {% for item in device_types %}
+                <option value="{{ item.id }}">
+                    {{ item.manufacturer.name }}
+                    — {{ item.model }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+
+        <div class="form-field">
+            <label for="platform_id">
+                Platform
+            </label>
+
+            <select
+                id="platform_id"
+                name="platform_id"
+                required
+            >
+                {% for item in platforms %}
+                <option value="{{ item.id }}">
+                    {{ item.manufacturer.name }}
+                    — {{ item.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+
+        <div class="form-field">
+            <label for="role_id">
+                Role
+            </label>
+
+            <select
+                id="role_id"
+                name="role_id"
+                required
+            >
+                {% for role in roles %}
+                <option value="{{ role.id }}">
+                    {{ role.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+
+        <div class="form-field">
+            <label for="management_ip">
+                Management IPv4
+            </label>
+
+            <input
+                id="management_ip"
+                name="management_ip"
+                type="text"
+                placeholder="172.20.20.50/24"
+                required
+            >
+
+            <span class="field-help">
+                Must be an unused address in
+                172.20.20.0/24.
+            </span>
+        </div>
+
+
+        <fieldset>
+            <legend>
+                Routing Protocols
+            </legend>
+
+            <div class="checkbox-grid">
+
+                {% for choice in routing_choices %}
+
+                <label class="checkbox-option">
+                    <input
+                        type="checkbox"
+                        name="routing_protocols"
+                        value="{{ choice.value }}"
+                    >
+
+                    <span>
+                        {{ choice.label }}
+                    </span>
+                </label>
+
+                {% endfor %}
+
+            </div>
+        </fieldset>
+
+
+        <div class="form-field">
+            <label for="config_profile">
+                Configuration Profile
+            </label>
+
+            <select
+                id="config_profile"
+                name="config_profile"
+                required
+            >
+                {% for choice in profile_choices %}
+                <option value="{{ choice.value }}">
+                    {{ choice.label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+
+        <div class="change-warning">
+            New devices are created with
+            <strong>Staged</strong> status and
+            <code>automation_managed=false</code>.
+            They cannot enter rendering, validation,
+            drift detection, or deployment until
+            onboarding is completed.
+        </div>
+
+
+        <button
+            type="submit"
+            class="button-primary"
+        >
+            Create Staged Device
+        </button>
+
+    </form>
+
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Supported Template Combinations</h2>
+    </div>
+
+    <div class="summary-list">
+        <div class="summary-row">
+            <span>Arista EOS</span>
+            <strong>
+                distribution / access / core
+            </strong>
+        </div>
+
+        <div class="summary-row">
+            <span>Cisco IOS-XE</span>
+            <strong>edge</strong>
+        </div>
+
+        <div class="summary-row">
+            <span>Nokia SR Linux</span>
+            <strong>core</strong>
+        </div>
+    </div>
+
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Staged Devices</h2>
+    </div>
+
+    {% if staged_devices %}
+
+    <table>
+        <thead>
+            <tr>
+                <th>Device</th>
+                <th>Site</th>
+                <th>Platform</th>
+                <th>Status</th>
+                <th>Automation</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for device in staged_devices %}
+
+            <tr>
+                <td>
+                    <strong>{{ device.name }}</strong>
+                </td>
+
+                <td>
+                    {{ device.site.name }}
+                </td>
+
+                <td>
+                    {% if device.platform %}
+                        {{ device.platform.name }}
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+
+                <td>
+                    {{ device.status.label }}
+                </td>
+
+                <td>
+                    <span class="status-skip">
+                        DISABLED
+                    </span>
+                </td>
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+    </table>
+
+    {% else %}
+
+    <p>
+        No staged onboarding devices currently exist.
+    </p>
+
+    {% endif %}
+
+</section>
+
+{% endblock %}
