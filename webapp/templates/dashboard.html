@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-heading">
+    <div>
+        <h1>Network Automation Dashboard</h1>
+
+        <p>
+            NetBox-backed source of truth and automation status.
+        </p>
+    </div>
+</div>
+
+<div class="cards">
+    <div class="card">
+        <span class="card-label">
+            Managed Devices
+        </span>
+
+        <span class="card-value">
+            {{ device_count }}
+        </span>
+    </div>
+
+    <div class="card">
+        <span class="card-label">
+            Vendors / Platforms
+        </span>
+
+        <span class="card-value">
+            {{ platform_counts | length }}
+        </span>
+    </div>
+
+    <div class="card">
+        <span class="card-label">
+            Config Profiles
+        </span>
+
+        <span class="card-value">
+            {{ profile_counts | length }}
+        </span>
+    </div>
+
+    <div class="card good">
+        <span class="card-label">
+            Automation Scope
+        </span>
+
+        <span class="card-value">
+            8
+        </span>
+
+        <span class="card-note">
+            R5 excluded
+        </span>
+    </div>
+</div>
+
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Managed Platforms</h2>
+    </div>
+
+    <div class="summary-list">
+
+        {% for platform, count in platform_counts.items() %}
+
+        <div class="summary-row">
+            <span>{{ platform }}</span>
+
+            <strong>{{ count }}</strong>
+        </div>
+
+        {% endfor %}
+
+    </div>
+</section>
+
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Configuration Profiles</h2>
+    </div>
+
+    <div class="summary-list">
+
+        {% for profile, count in profile_counts.items() %}
+
+        <div class="summary-row">
+            <span>{{ profile }}</span>
+
+            <strong>{{ count }}</strong>
+        </div>
+
+        {% endfor %}
+
+    </div>
+</section>
+
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Automation Pipeline</h2>
+    </div>
+
+    <div class="pipeline">
+        <div>NetBox NSOT</div>
+        <span>→</span>
+
+        <div>Jinja2 Render</div>
+        <span>→</span>
+
+        <div>Live Validation</div>
+        <span>→</span>
+
+        <div>Drift Detection</div>
+        <span>→</span>
+
+        <div>Golden Config</div>
+    </div>
+</section>
+
+{% endblock %}

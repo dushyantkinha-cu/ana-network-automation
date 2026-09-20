@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-heading">
+    <div>
+        <h1>Managed Inventory</h1>
+
+        <p>
+            Devices are loaded dynamically from the NetBox
+            source of truth.
+        </p>
+    </div>
+
+    <div class="count-badge">
+        {{ devices | length }} managed devices
+    </div>
+</div>
+
+
+<section class="panel table-panel">
+
+    <table>
+        <thead>
+            <tr>
+                <th>Device</th>
+                <th>Role</th>
+                <th>Platform</th>
+                <th>Management IP</th>
+                <th>Profile</th>
+                <th>Routing</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for device in devices %}
+
+            <tr>
+                <td>
+                    <strong>
+                        {{ device.hostname }}
+                    </strong>
+                </td>
+
+                <td>
+                    {{ device.role }}
+                </td>
+
+                <td>
+                    {{ device.platform }}
+                </td>
+
+                <td>
+                    <code>
+                        {{ device.management_ip }}
+                    </code>
+                </td>
+
+                <td>
+                    <span class="tag">
+                        {{ device.config_profile }}
+                    </span>
+                </td>
+
+                <td>
+                    {% for protocol in device.routing_protocols %}
+                        <span class="tag protocol">
+                            {{ protocol }}
+                        </span>
+                    {% endfor %}
+                </td>
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+    </table>
+
+</section>
+
+{% endblock %}

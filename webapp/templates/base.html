@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>
+        {{ page_title }} | ANA Network Automation
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', path='/css/style.css') }}"
+    >
+</head>
+
+<body>
+    <header class="topbar">
+        <div class="brand">
+            ANA Network Automation
+        </div>
+
+        <nav>
+            <a
+                href="/"
+                class="{% if page_title == 'Dashboard' %}active{% endif %}"
+            >
+                Dashboard
+            </a>
+
+            <a
+                href="/inventory"
+                class="{% if page_title == 'Managed Inventory' %}active{% endif %}"
+            >
+                Inventory
+            </a>
+
+            <a
+                href="{{ netbox_url }}"
+                target="_blank"
+                rel="noopener"
+            >
+                NetBox
+            </a>
+        </nav>
+    </header>
+
+    <main class="container">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <footer>
+        ANA Network Automation Lab
+    </footer>
+</body>
+</html>
