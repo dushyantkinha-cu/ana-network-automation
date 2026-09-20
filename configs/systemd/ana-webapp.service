@@ -1,0 +1,22 @@
+[Unit]
+Description=ANA Network Automation FastAPI Web Application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=student
+Group=student
+
+WorkingDirectory=/home/student/ana-network-automation
+
+EnvironmentFile=/home/student/.config/ana-network-automation/netbox.env
+EnvironmentFile=/home/student/.config/ana-network-automation/device.env
+
+ExecStart=/home/student/ana-network-automation/.venv/bin/python -m uvicorn webapp.main:app --host 0.0.0.0 --port 8000
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
