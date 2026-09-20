@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-heading">
+    <div>
+        <h1>Network Intent Changes</h1>
+
+        <p>
+            Edit managed-device intent stored in the
+            NetBox source of truth.
+        </p>
+    </div>
+</div>
+
+
+{% if action_message %}
+
+<div
+    class="alert
+    {% if action_status == 'success' %}
+    alert-success
+    {% else %}
+    alert-error
+    {% endif %}"
+>
+    {{ action_message }}
+</div>
+
+{% endif %}
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Select Managed Device</h2>
+    </div>
+
+    <form
+        method="get"
+        action="/changes"
+        class="change-selector"
+    >
+        <select
+            name="device"
+            onchange="this.form.submit()"
+        >
+            <option value="">
+                Select a device...
+            </option>
+
+            {% for device in devices %}
+
+            <option
+                value="{{ device.hostname }}"
+                {% if selected_device
+                      and selected_device.hostname
+                          == device.hostname %}
+                selected
+                {% endif %}
+            >
+                {{ device.hostname }}
+                — {{ device.platform }}
+            </option>
+
+            {% endfor %}
+        </select>
+
+        <noscript>
+            <button
+                type="submit"
+                class="button-primary"
+            >
+                Load Device
+            </button>
+        </noscript>
+    </form>
+
+</section>
+
+
+{% if selected_device %}
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>
+            {{ selected_device.hostname }}
+        </h2>
+    </div>
+
+    <div class="detail-grid">
+
+        <div>
+            <span class="detail-label">
+                Site
+            </span>
+
+            <strong>
+                {{ raw_device.site.name }}
+            </strong>
+        </div>
+
+
+        <div>
+            <span class="detail-label">
+                Manufacturer
+            </span>
+
+            <strong>
+                {{ selected_device.manufacturer }}
+            </strong>
+        </div>
+
+
+        <div>
+            <span class="detail-label">
+                Platform
+            </span>
+
+            <strong>
+                {{ selected_device.platform }}
+            </strong>
+        </div>
+
+
+        <div>
+            <span class="detail-label">
+                Role
+            </span>
+
+            <strong>
+                {{ selected_device.role }}
+            </strong>
+        </div>
+
+
+        <div>
+            <span class="detail-label">
+                Management IP
+            </span>
+
+            <code>
+                {{ selected_device.management_ip }}
+            </code>
+        </div>
+
+
+        <div>
+            <span class="detail-label">
+                Jinja2 Template
+            </span>
+
+            <code>
+                {% if template_path %}
+                    {{ template_path }}
+                {% else %}
+                    No compatible template
+                {% endif %}
+            </code>
+        </div>
+
+    </div>
+
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Edit Automation Intent</h2>
+    </div>
+
+    <form
+        method="post"
+        action="/changes/update"
+        class="intent-form"
+    >
+
+        <input
+            type="hidden"
+            name="hostname"
+            value="{{ selected_device.hostname }}"
+        >
+
+
+        <fieldset>
+
+            <legend>
+                Routing Protocols
+            </legend>
+
+            <div class="checkbox-grid">
+
+                {% for choice in routing_choices %}
+
+                <label class="checkbox-option">
+
+                    <input
+                        type="checkbox"
+                        name="routing_protocols"
+                        value="{{ choice.value }}"
+                        {% if choice.value
+                              in selected_device.routing_protocols %}
+                        checked
+                        {% endif %}
+                    >
+
+                    <span>
+                        {{ choice.label }}
+                    </span>
+
+                </label>
+
+                {% endfor %}
+
+            </div>
+
+        </fieldset>
+
+
+        <div class="form-field">
+
+            <label for="config_profile">
+                Configuration Profile
+            </label>
+
+            <select
+                id="config_profile"
+                name="config_profile"
+                required
+            >
+
+                {% for choice in compatible_profiles %}
+
+                <option
+                    value="{{ choice.value }}"
+                    {% if choice.value
+                          == selected_device.config_profile %}
+                    selected
+                    {% endif %}
+                >
+                    {{ choice.label }}
+                </option>
+
+                {% endfor %}
+
+            </select>
+
+            <span class="field-help">
+                Only profiles with an implemented Jinja2
+                template for this platform are selectable.
+            </span>
+
+        </div>
+
+
+        <div class="change-warning">
+            This changes NetBox intent only.
+            It does not deploy configuration to the device.
+        </div>
+
+
+        <button
+            type="submit"
+            class="button-primary"
+        >
+            Save Intent to NetBox
+        </button>
+
+    </form>
+
+</section>
+
+{% endif %}
+
+{% endblock %}

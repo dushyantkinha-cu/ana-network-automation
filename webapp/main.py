@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+import requests
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WEBAPP_DIR = Path(__file__).resolve().parent
@@ -32,6 +33,21 @@ NETBOX_URL = os.environ.get(
     "http://netbox.local",
 ).rstrip("/")
 
+ROUTING_CHOICE_SET_ID = 1
+PROFILE_CHOICE_SET_ID = 2
+PROFILE_TEMPLATE_MAP = {
+    "Cisco IOS-XE": {
+        "edge": "templates/cisco/edge.j2",
+    },
+    "Arista EOS": {
+        "distribution": "templates/arista/distribution.j2",
+        "access": "templates/arista/access.j2",
+        "core": "templates/arista/core.j2",
+    },
+    "Nokia SR Linux": {
+        "core": "templates/nokia/core.j2",
+    },
+}
 
 app = FastAPI(
     title="ANA Network Automation",
@@ -80,6 +96,95 @@ def get_devices():
     inventory = load_inventory()
     return inventory.get("devices", [])
 
+
+def netbox_headers():
+    token = os.environ.get("NETBOX_TOKEN")
+
+    if not token:
+        raise RuntimeError(
+            "NETBOX_TOKEN is not available to the web application."
+        )
+
+    return {
+        "Authorization": f"Token {token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+
+
+def netbox_get(path):
+    try:
+        response = requests.get(
+            f"{NETBOX_URL}{path}",
+            headers=netbox_headers(),
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"NetBox GET failed: {exc}"
+        ) from exc
+
+
+def netbox_patch(path, payload):
+    try:
+        response = requests.patch(
+            f"{NETBOX_URL}{path}",
+            headers=netbox_headers(),
+            json=payload,
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"NetBox PATCH failed: {exc}"
+        ) from exc
+
+
+def get_choice_values(choice_set_id):
+    data = netbox_get(
+        f"/api/extras/custom-field-choice-sets/"
+        f"{choice_set_id}/"
+    )
+
+    choices = []
+
+    for source in (
+        data.get("base_choices") or [],
+        data.get("extra_choices") or [],
+    ):
+        for value, label in source:
+            choices.append(
+                {
+                    "value": value,
+                    "label": label,
+                }
+            )
+
+    return choices
+
+
+def find_managed_device(hostname):
+    devices = get_devices()
+
+    return next(
+        (
+            device
+            for device in devices
+            if device.get("hostname") == hostname
+        ),
+        None,
+    )
+
+
 def run_validation():
     result = subprocess.run(
         [
@@ -98,6 +203,7 @@ def run_validation():
         "stdout": result.stdout.strip(),
         "stderr": result.stderr.strip(),
     }
+
 
 def latest_validation_report():
     reports = sorted(
@@ -274,6 +380,7 @@ def inventory_page(request: Request):
         },
     )
 
+
 @app.get("/automation")
 def automation_page(
     request: Request,
@@ -321,6 +428,7 @@ def automation_page(
         },
     )
 
+
 @app.post("/automation/validate")
 def run_validation_action():
     result = run_validation()
@@ -343,6 +451,218 @@ def run_validation_action():
         url=(
             "/automation"
             f"?status={quote(status)}"
+            f"&message={quote(message)}"
+        ),
+        status_code=303,
+    )
+
+
+@app.get("/changes")
+def changes_page(
+    request: Request,
+    device: str | None = None,
+    status: str | None = None,
+    message: str | None = None,
+):
+    try:
+        devices = get_devices()
+
+        routing_choices = get_choice_values(
+            ROUTING_CHOICE_SET_ID
+        )
+
+        profile_choices = get_choice_values(
+            PROFILE_CHOICE_SET_ID
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    selected_device = None
+    raw_device = None
+    compatible_profiles = []
+    template_path = None
+
+    if device:
+        selected_device = next(
+            (
+                item
+                for item in devices
+                if item.get("hostname") == device
+            ),
+            None,
+        )
+
+        if selected_device is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "Device is not in managed "
+                    "automation scope."
+                ),
+            )
+
+        device_id = selected_device.get("device_id")
+
+        if not device_id:
+            raise HTTPException(
+                status_code=500,
+                detail="Managed device has no NetBox device ID.",
+            )
+
+        try:
+            raw_device = netbox_get(
+                f"/api/dcim/devices/{device_id}/"
+            )
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=str(exc),
+            ) from exc
+
+        platform = selected_device.get("platform")
+
+        supported_profiles = PROFILE_TEMPLATE_MAP.get(
+            platform,
+            {},
+        )
+
+        compatible_profiles = [
+            choice
+            for choice in profile_choices
+            if choice["value"] in supported_profiles
+        ]
+
+        template_path = supported_profiles.get(
+            selected_device.get("config_profile")
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="changes.html",
+        context={
+            "page_title": "Changes",
+            "devices": devices,
+            "selected_device": selected_device,
+            "raw_device": raw_device,
+            "routing_choices": routing_choices,
+            "compatible_profiles": compatible_profiles,
+            "template_path": template_path,
+            "action_status": status,
+            "action_message": message,
+            "netbox_url": NETBOX_URL,
+        },
+    )
+
+
+@app.post("/changes/update")
+async def update_device_intent(request: Request):
+    form = await request.form()
+
+    hostname = str(
+        form.get("hostname", "")
+    ).strip()
+
+    config_profile = str(
+        form.get("config_profile", "")
+    ).strip()
+
+    routing_protocols = [
+        str(value)
+        for value in form.getlist(
+            "routing_protocols"
+        )
+    ]
+
+    try:
+        device = find_managed_device(hostname)
+
+        if (
+            device is None
+            or device.get("automation_managed") is not True
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Device is outside managed "
+                    "automation scope."
+                ),
+            )
+
+        allowed_routing = {
+            choice["value"]
+            for choice in get_choice_values(
+                ROUTING_CHOICE_SET_ID
+            )
+        }
+
+        invalid_routing = (
+            set(routing_protocols)
+            - allowed_routing
+        )
+
+        if invalid_routing:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid routing protocol selection.",
+            )
+
+        platform = device.get("platform")
+
+        supported_profiles = PROFILE_TEMPLATE_MAP.get(
+            platform,
+            {},
+        )
+
+        if config_profile not in supported_profiles:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Selected configuration profile "
+                    "is not supported by this platform."
+                ),
+            )
+
+        device_id = device.get("device_id")
+
+        if not device_id:
+            raise HTTPException(
+                status_code=500,
+                detail="Managed device has no NetBox device ID.",
+            )
+
+        payload = {
+            "custom_fields": {
+                "automation_managed": True,
+                "routing_protocols": routing_protocols,
+                "config_profile": config_profile,
+            }
+        }
+
+        netbox_patch(
+            f"/api/dcim/devices/{device_id}/",
+            payload,
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    message = (
+        f"NetBox intent for {hostname} "
+        "was updated successfully."
+    )
+
+    return RedirectResponse(
+        url=(
+            "/changes"
+            f"?device={quote(hostname)}"
+            "&status=success"
             f"&message={quote(message)}"
         ),
         status_code=303,
