@@ -272,6 +272,123 @@
 
 </section>
 
+{% if wan_state %}
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>WAN Addressing</h2>
+    </div>
+
+    <div class="wan-summary">
+
+        <div>
+            <span class="detail-label">
+                Provider-facing Interface
+            </span>
+
+            <strong>
+                {{ wan_state.interface_name }}
+            </strong>
+        </div>
+
+        <div>
+            <span class="detail-label">
+                Current IPv4
+            </span>
+
+            <code>
+                {{ wan_state.ipv4.address }}
+            </code>
+        </div>
+
+        <div>
+            <span class="detail-label">
+                Current IPv6
+            </span>
+
+            <code>
+                {{ wan_state.ipv6.address }}
+            </code>
+        </div>
+
+    </div>
+
+
+    <form
+        method="post"
+        action="/changes/update-wan"
+        class="intent-form"
+    >
+
+        <input
+            type="hidden"
+            name="hostname"
+            value="{{ selected_device.hostname }}"
+        >
+
+
+        <div class="form-field">
+
+            <label for="wan_ipv4">
+                WAN IPv4
+            </label>
+
+            <input
+                id="wan_ipv4"
+                name="wan_ipv4"
+                type="text"
+                value="{{ wan_state.ipv4.address }}"
+                required
+            >
+
+            <span class="field-help">
+                CIDR notation required.
+                Prefix length is preserved.
+            </span>
+
+        </div>
+
+
+        <div class="form-field">
+
+            <label for="wan_ipv6">
+                WAN IPv6
+            </label>
+
+            <input
+                id="wan_ipv6"
+                name="wan_ipv6"
+                type="text"
+                value="{{ wan_state.ipv6.address }}"
+                required
+            >
+
+            <span class="field-help">
+                CIDR notation required.
+                Prefix length is preserved.
+            </span>
+
+        </div>
+
+
+        <div class="change-warning">
+            This updates the existing IP address
+            objects in NetBox only. It does not
+            deploy the new addresses to the router.
+        </div>
+
+
+        <button
+            type="submit"
+            class="button-primary"
+        >
+            Save WAN Addresses to NetBox
+        </button>
+
+    </form>
+</section>
+{% endif %}
+
 {% endif %}
 
 {% endblock %}

@@ -407,3 +407,28 @@ footer {
     border-radius: 7px;
     padding: 12px 14px;
 }
+
+.wan-summary {
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+}
+
+.wan-summary > div {
+    border: 1px solid #e5e7eb;
+    border-radius: 7px;
+    padding: 14px;
+    background: #f9fafb;
+}
+
+.intent-form input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: white;
+    font-size: 14px;
+    font-family: monospace;
+}

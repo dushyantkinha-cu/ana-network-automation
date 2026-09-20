@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import ipaddress
 import json
 import os
 import subprocess
@@ -183,6 +184,92 @@ def find_managed_device(hostname):
         ),
         None,
     )
+
+
+def get_wan_address_state(device):
+    device_id = device.get("device_id")
+
+    if not device_id:
+        raise RuntimeError(
+            "Managed device has no NetBox device ID."
+        )
+
+    context = device.get("config_context") or {}
+    nat = context.get("nat") or {}
+
+    outside_interface = nat.get(
+        "outside_interface"
+    )
+
+    if not outside_interface:
+        return None
+
+    interfaces = netbox_get(
+        "/api/dcim/interfaces/"
+        f"?device_id={device_id}"
+        f"&name={outside_interface}"
+    ).get("results", [])
+
+    if len(interfaces) != 1:
+        raise RuntimeError(
+            f"Unable to uniquely resolve "
+            f"{device['hostname']} "
+            f"WAN interface {outside_interface}."
+        )
+
+    interface = interfaces[0]
+
+    ip_objects = netbox_get(
+        "/api/ipam/ip-addresses/"
+        f"?interface_id={interface['id']}"
+        "&limit=0"
+    ).get("results", [])
+
+    ipv4 = None
+    ipv6 = None
+
+    for ip_object in ip_objects:
+        address = ip_object.get("address")
+
+        if not address:
+            continue
+
+        parsed = ipaddress.ip_interface(
+            address
+        )
+
+        record = {
+            "id": ip_object["id"],
+            "address": address,
+            "prefixlen": parsed.network.prefixlen,
+        }
+
+        if parsed.version == 4:
+            if ipv4 is not None:
+                raise RuntimeError(
+                    "WAN interface has multiple IPv4 "
+                    "addresses; automatic editing is "
+                    "not safe."
+                )
+
+            ipv4 = record
+
+        else:
+            if ipv6 is not None:
+                raise RuntimeError(
+                    "WAN interface has multiple IPv6 "
+                    "addresses; automatic editing is "
+                    "not safe."
+                )
+
+            ipv6 = record
+
+    return {
+        "interface_id": interface["id"],
+        "interface_name": outside_interface,
+        "ipv4": ipv4,
+        "ipv6": ipv6,
+    }
 
 
 def run_validation():
@@ -485,6 +572,7 @@ def changes_page(
     raw_device = None
     compatible_profiles = []
     template_path = None
+    wan_state = None
 
     if device:
         selected_device = next(
@@ -540,6 +628,10 @@ def changes_page(
             selected_device.get("config_profile")
         )
 
+        wan_state = get_wan_address_state(
+            selected_device
+        )
+
     return templates.TemplateResponse(
         request=request,
         name="changes.html",
@@ -551,6 +643,7 @@ def changes_page(
             "routing_choices": routing_choices,
             "compatible_profiles": compatible_profiles,
             "template_path": template_path,
+            "wan_state": wan_state,
             "action_status": status,
             "action_message": message,
             "netbox_url": NETBOX_URL,
@@ -656,6 +749,175 @@ async def update_device_intent(request: Request):
     message = (
         f"NetBox intent for {hostname} "
         "was updated successfully."
+    )
+
+    return RedirectResponse(
+        url=(
+            "/changes"
+            f"?device={quote(hostname)}"
+            "&status=success"
+            f"&message={quote(message)}"
+        ),
+        status_code=303,
+    )
+
+
+@app.post("/changes/update-wan")
+async def update_wan_addresses(request: Request):
+    form = await request.form()
+
+    hostname = str(
+        form.get("hostname", "")
+    ).strip()
+
+    submitted_ipv4 = str(
+        form.get("wan_ipv4", "")
+    ).strip()
+
+    submitted_ipv6 = str(
+        form.get("wan_ipv6", "")
+    ).strip()
+
+    try:
+        device = find_managed_device(hostname)
+
+        if (
+            device is None
+            or device.get(
+                "automation_managed"
+            ) is not True
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Device is outside managed "
+                    "automation scope."
+                ),
+            )
+
+        wan_state = get_wan_address_state(
+            device
+        )
+
+        if wan_state is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This device has no managed "
+                    "WAN interface."
+                ),
+            )
+
+        if not wan_state["ipv4"]:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "WAN interface has no IPv4 "
+                    "address object."
+                ),
+            )
+
+        if not wan_state["ipv6"]:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "WAN interface has no IPv6 "
+                    "address object."
+                ),
+            )
+
+        try:
+            ipv4 = ipaddress.ip_interface(
+                submitted_ipv4
+            )
+
+            ipv6 = ipaddress.ip_interface(
+                submitted_ipv6
+            )
+
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "WAN addresses must use valid "
+                    "CIDR notation."
+                ),
+            ) from exc
+
+        if ipv4.version != 4:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "WAN IPv4 field must contain "
+                    "an IPv4 address."
+                ),
+            )
+
+        if ipv6.version != 6:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "WAN IPv6 field must contain "
+                    "an IPv6 address."
+                ),
+            )
+
+        if (
+            ipv4.network.prefixlen
+            != wan_state["ipv4"]["prefixlen"]
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "WAN IPv4 prefix length cannot "
+                    "be changed from this form."
+                ),
+            )
+
+        if (
+            ipv6.network.prefixlen
+            != wan_state["ipv6"]["prefixlen"]
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "WAN IPv6 prefix length cannot "
+                    "be changed from this form."
+                ),
+            )
+
+        normalized_ipv4 = str(ipv4)
+        normalized_ipv6 = str(ipv6)
+
+        netbox_patch(
+            (
+                "/api/ipam/ip-addresses/"
+                f"{wan_state['ipv4']['id']}/"
+            ),
+            {
+                "address": normalized_ipv4,
+            },
+        )
+
+        netbox_patch(
+            (
+                "/api/ipam/ip-addresses/"
+                f"{wan_state['ipv6']['id']}/"
+            ),
+            {
+                "address": normalized_ipv6,
+            },
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    message = (
+        f"WAN addresses for {hostname} "
+        "were updated successfully in NetBox."
     )
 
     return RedirectResponse(
