@@ -1,0 +1,176 @@
+{
+  "timestamp_utc": "2026-09-20T17:59:37.851549+00:00",
+  "scope": "all-managed-devices",
+  "devices": [
+    {
+      "hostname": "R1",
+      "platform": "Arista EOS",
+      "management_ip": "172.20.20.14/24"
+    },
+    {
+      "hostname": "R2",
+      "platform": "Arista EOS",
+      "management_ip": "172.20.20.5/24"
+    },
+    {
+      "hostname": "R3",
+      "platform": "Cisco IOS-XE",
+      "management_ip": "172.20.20.9/24"
+    },
+    {
+      "hostname": "R4",
+      "platform": "Cisco IOS-XE",
+      "management_ip": "172.20.20.13/24"
+    },
+    {
+      "hostname": "S1",
+      "platform": "Arista EOS",
+      "management_ip": "172.20.20.8/24"
+    },
+    {
+      "hostname": "S2",
+      "platform": "Arista EOS",
+      "management_ip": "172.20.20.11/24"
+    },
+    {
+      "hostname": "S3",
+      "platform": "Arista EOS",
+      "management_ip": "172.20.20.7/24"
+    },
+    {
+      "hostname": "S4",
+      "platform": "Nokia SR Linux",
+      "management_ip": "172.20.20.4/24"
+    }
+  ],
+  "steps": {
+    "render": [
+      {
+        "device": "R1",
+        "command": [
+          "/usr/bin/python3",
+          "render_config.py",
+          "--device",
+          "R1"
+        ],
+        "returncode": 0,
+        "stdout": "Rendered R1 -> /home/student/ana-network-automation/generated-configs/R1.cfg",
+        "stderr": ""
+      },
+      {
+        "device": "R2",
+        "command": [
+          "/usr/bin/python3",
+          "render_config.py",
+          "--device",
+          "R2"
+        ],
+        "returncode": 0,
+        "stdout": "Rendered R2 -> /home/student/ana-network-automation/generated-configs/R2.cfg",
+        "stderr": ""
+      },
+      {
+        "device": "R3",
+        "command": [
+          "/usr/bin/python3",
+          "render_config.py",
+          "--device",
+          "R3"
+        ],
+        "returncode": 0,
+        "stdout": "Rendered R3 -> /home/student/ana-network-automation/generated-configs/R3.cfg",
+        "stderr": ""
+      },
+      {
+        "device": "R4",
+        "command": [
+          "/usr/bin/python3",
+          "render_config.py",
+          "--device",
+          "R4"
+        ],
+        "returncode": 0,
+        "stdout": "Rendered R4 -> /home/student/ana-network-automation/generated-configs/R4.cfg",
+        "stderr": ""
+      },
+      {
+        "device": "S1",
+        "command": [
+          "/usr/bin/python3",
+          "render_config.py",
+          "--device",
+          "S1"
+        ],
+        "returncode": 0,
+        "stdout": "Rendered S1 -> /home/student/ana-network-automation/generated-configs/S1.cfg",
+        "stderr": ""
+      },
+      {
+        "device": "S2",
+        "command": [
+          "/usr/bin/python3",
+          "render_config.py",
+          "--device",
+          "S2"
+        ],
+        "returncode": 0,
+        "stdout": "Rendered S2 -> /home/student/ana-network-automation/generated-configs/S2.cfg",
+        "stderr": ""
+      },
+      {
+        "device": "S3",
+        "command": [
+          "/usr/bin/python3",
+          "render_config.py",
+          "--device",
+          "S3"
+        ],
+        "returncode": 0,
+        "stdout": "Rendered S3 -> /home/student/ana-network-automation/generated-configs/S3.cfg",
+        "stderr": ""
+      },
+      {
+        "device": "S4",
+        "command": [
+          "/usr/bin/python3",
+          "render_config.py",
+          "--device",
+          "S4"
+        ],
+        "returncode": 0,
+        "stdout": "Rendered S4 -> /home/student/ana-network-automation/generated-configs/S4.cfg",
+        "stderr": ""
+      }
+    ],
+    "collect": {
+      "command": [
+        "/usr/bin/python3",
+        "collect_live_configs.py"
+      ],
+      "returncode": 0,
+      "stdout": "PASS  R1  Arista EOS  116 lines  -> /home/student/ana-network-automation/live-configs/R1.cfg\nPASS  R2  Arista EOS  116 lines  -> /home/student/ana-network-automation/live-configs/R2.cfg\nPASS  R3  Cisco IOS-XE  334 lines  -> /home/student/ana-network-automation/live-configs/R3.cfg\nPASS  R4  Cisco IOS-XE  329 lines  -> /home/student/ana-network-automation/live-configs/R4.cfg\nPASS  S1  Arista EOS  116 lines  -> /home/student/ana-network-automation/live-configs/S1.cfg\nPASS  S2  Arista EOS  112 lines  -> /home/student/ana-network-automation/live-configs/S2.cfg\nPASS  S3  Arista EOS  91 lines  -> /home/student/ana-network-automation/live-configs/S3.cfg\nPASS  S4  Nokia SR Linux  2493 lines  -> /home/student/ana-network-automation/live-configs/S4.cfg",
+      "stderr": ""
+    },
+    "intent_validation": {
+      "command": [
+        "/usr/bin/python3",
+        "validate_intent.py",
+        "--show-missing"
+      ],
+      "returncode": 0,
+      "stdout": "PASS  R1  Arista EOS  46 intended paths verified\nPASS  R2  Arista EOS  46 intended paths verified\nPASS  R3  Cisco IOS-XE  65 intended paths verified\nPASS  R4  Cisco IOS-XE  63 intended paths verified\nPASS  S1  Arista EOS  47 intended paths verified\nPASS  S2  Arista EOS  43 intended paths verified\nPASS  S3  Arista EOS  29 intended paths verified\nPASS  S4  Nokia SR Linux  65 intended paths verified",
+      "stderr": ""
+    },
+    "drift": {
+      "command": [
+        "/usr/bin/python3",
+        "report_drift.py",
+        "--details"
+      ],
+      "returncode": 0,
+      "stdout": "PASS   R1  Arista EOS  no scoped drift\nPASS   R2  Arista EOS  no scoped drift\nPASS   R3  Cisco IOS-XE  no scoped drift\nPASS   R4  Cisco IOS-XE  no scoped drift\nPASS   S1  Arista EOS  no scoped drift\nPASS   S2  Arista EOS  no scoped drift\nPASS   S3  Arista EOS  no scoped drift\nPASS   S4  Nokia SR Linux  no scoped drift",
+      "stderr": ""
+    }
+  },
+  "overall_status": "pass"
+}

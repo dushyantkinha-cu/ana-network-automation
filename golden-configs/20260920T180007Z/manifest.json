@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "snapshot_id": "20260920T180007Z",
+  "created_at_utc": "2026-09-20T18:04:48.158220+00:00",
+  "validation": {
+    "source_report": "validation-all-20260920T180007Z.json",
+    "snapshot_report": "validation-report.json",
+    "report_sha256": "48891f9a9edda94e5e33b64872f44581c7aef1e1e5b11d4f986b424d7ae21894",
+    "timestamp_utc": "2026-09-20T17:59:37.851549+00:00",
+    "scope": "all-managed-devices",
+    "overall_status": "pass"
+  },
+  "git": {
+    "commit": "67b695b0638ce1bb76ea85d83f59b52f92879e42",
+    "branch": "main"
+  },
+  "devices": [
+    {
+      "hostname": "R1",
+      "platform": "Arista EOS",
+      "management_ip": "172.20.20.14/24",
+      "source_path": "generated-configs/R1.cfg",
+      "snapshot_file": "R1.cfg",
+      "size_bytes": 1546,
+      "sha256": "b8b1b7177ac6ca7ac6e97def6e6d1c5f1e89c595523023460adf6d51704544aa"
+    },
+    {
+      "hostname": "R2",
+      "platform": "Arista EOS",
+      "management_ip": "172.20.20.5/24",
+      "source_path": "generated-configs/R2.cfg",
+      "snapshot_file": "R2.cfg",
+      "size_bytes": 1546,
+      "sha256": "8c8b10c4e19e821c8b11cc0fb328026ac379a9761bb99e6ffdca99b58e23899e"
+    },
+    {
+      "hostname": "R3",
+      "platform": "Cisco IOS-XE",
+      "management_ip": "172.20.20.9/24",
+      "source_path": "generated-configs/R3.cfg",
+      "snapshot_file": "R3.cfg",
+      "size_bytes": 2376,
+      "sha256": "7f25134dd43cf347dd9a9b9d77f7da95e3c3d3d0d4f51bd7e27b5e0401ee90c2"
+    },
+    {
+      "hostname": "R4",
+      "platform": "Cisco IOS-XE",
+      "management_ip": "172.20.20.13/24",
+      "source_path": "generated-configs/R4.cfg",
+      "snapshot_file": "R4.cfg",
+      "size_bytes": 2274,
+      "sha256": "58450a6d5e01f2439a88f5a650155cb666d59139c543315e4eada17ba1f92382"
+    },
+    {
+      "hostname": "S1",
+      "platform": "Arista EOS",
+      "management_ip": "172.20.20.8/24",
+      "source_path": "generated-configs/S1.cfg",
+      "snapshot_file": "S1.cfg",
+      "size_bytes": 1267,
+      "sha256": "a01979403c0d9bfa115234640493a8a07c7507f3193c09179f2ada9d18fac1d1"
+    },
+    {
+      "hostname": "S2",
+      "platform": "Arista EOS",
+      "management_ip": "172.20.20.11/24",
+      "source_path": "generated-configs/S2.cfg",
+      "snapshot_file": "S2.cfg",
+      "size_bytes": 1161,
+      "sha256": "549b8edb864a189a938edc16705212bbd9127a32fbf9615e1e690e23cf7de4af"
+    },
+    {
+      "hostname": "S3",
+      "platform": "Arista EOS",
+      "management_ip": "172.20.20.7/24",
+      "source_path": "generated-configs/S3.cfg",
+      "snapshot_file": "S3.cfg",
+      "size_bytes": 781,
+      "sha256": "0f2a3592855f7a051c95396046df2a91086cbf5dedb80504932bc57d999e1909"
+    },
+    {
+      "hostname": "S4",
+      "platform": "Nokia SR Linux",
+      "management_ip": "172.20.20.4/24",
+      "source_path": "generated-configs/S4.cfg",
+      "snapshot_file": "S4.cfg",
+      "size_bytes": 2459,
+      "sha256": "ab1a9c13fed2db351b913a2a51c06ad1e232eab25411c54fb1b8b7998e3665fe"
+    }
+  ]
+}
