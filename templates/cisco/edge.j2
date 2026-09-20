@@ -1,0 +1,109 @@
+hostname {{ device.hostname }}
+!
+{% for interface in device.interfaces if not interface.mgmt_only %}
+interface {{ interface.name | ios_ifname }}
+{% for address in interface.ip_addresses %}
+{% if (address | ip_family) == 4 %}
+ ip address {{ address | ip_address_only }} {{ address | ios_netmask }}
+{% endif %}
+{% endfor %}
+{% if interface.name in ctx.nat.inside_interfaces %}
+ ip nat inside
+{% elif interface.name == ctx.nat.outside_interface %}
+ ip nat outside
+{% endif %}
+{% if interface.name[:2] == "Gi" %}
+ negotiation auto
+{% endif %}
+{% for address in interface.ip_addresses %}
+{% if (address | ip_family) == 6 %}
+ ipv6 address {{ address }}
+{% endif %}
+{% endfor %}
+{% if interface.name in ctx.ospfv3.interfaces %}
+ ipv6 ospf {{ ctx.ospfv3.process_id }} area {{ ctx.ospf.area }}
+{% endif %}
+{% if not interface.enabled %}
+ shutdown
+{% endif %}
+!
+{% endfor %}
+
+{% for list_name, entries in ctx.ipv6_prefix_lists | dictsort %}
+{% for entry in entries %}
+ipv6 prefix-list {{ list_name }} seq {{ entry.sequence }} {{ entry.action }} {{ entry.prefix }}{{ " le " ~ entry.le if entry.le is defined else "" }}
+{% endfor %}
+{% endfor %}
+!
+
+route-map {{ ctx.route_maps.ospf_to_bgp }} permit 10
+ match ipv6 address prefix-list PL-VLAN-V6
+!
+route-map {{ ctx.route_maps.bgp_to_ospf }} permit 10
+ match ipv6 address prefix-list PL-WEB-V6
+!
+
+ip access-list standard {{ ctx.nat.acl_name }}
+{% for entry in ctx.nat.acl_entries %}
+ {{ entry.sequence }} permit {{ entry.network }} {{ entry.wildcard }}
+{% endfor %}
+!
+
+ip nat inside source list {{ ctx.nat.acl_name }} interface {{ ctx.nat.outside_interface | ios_ifname }} overload
+!
+
+router ospfv3 {{ ctx.ospfv3.process_id }}
+{% if ctx.ospfv3.ipv4_address_family %}
+ !
+ address-family ipv4 unicast
+ exit-address-family
+{% endif %}
+ !
+ address-family ipv6 unicast
+  redistribute bgp {{ ctx.bgp.local_asn }} route-map {{ ctx.route_maps.bgp_to_ospf }}
+  router-id {{ ctx.router_id }}
+ exit-address-family
+!
+
+router ospf {{ ctx.ospf.process_id }}
+ router-id {{ ctx.router_id }}
+ max-lsa {{ ctx.ospf.max_lsa }}
+ redistribute bgp {{ ctx.bgp.local_asn }}
+{% for interface in ctx.ospf.passive_interfaces %}
+ passive-interface {{ interface | ios_ifname }}
+{% endfor %}
+{% for network in ctx.ospf.networks %}
+ network {{ network.network }} {{ network.wildcard }} area {{ network.area }}
+{% endfor %}
+!
+
+router bgp {{ ctx.bgp.local_asn }}
+ bgp router-id {{ ctx.router_id }}
+ bgp log-neighbor-changes
+ neighbor {{ ctx.bgp.provider_ipv6_neighbor }} remote-as {{ ctx.provider.asn }}
+ neighbor {{ ctx.bgp.provider_ipv4_neighbor }} remote-as {{ ctx.provider.asn }}
+ !
+ address-family ipv4
+{% if ctx.bgp.redistribute_ospfv3_into_ipv4 %}
+  redistribute ospfv3 {{ ctx.ospfv3.process_id }} route-map {{ ctx.route_maps.ospf_to_bgp }}
+{% endif %}
+  no neighbor {{ ctx.bgp.provider_ipv6_neighbor }} activate
+  neighbor {{ ctx.bgp.provider_ipv4_neighbor }} activate
+ exit-address-family
+ !
+ address-family ipv6
+  redistribute ospf {{ ctx.ospf.process_id }} match internal external 1 external 2 route-map {{ ctx.route_maps.ospf_to_bgp }}
+  neighbor {{ ctx.bgp.provider_ipv6_neighbor }} activate
+ exit-address-family
+!
+
+snmp-server group {{ ctx.snmp.group }} v3 priv read {{ ctx.snmp.view }}
+snmp-server view {{ ctx.snmp.view }} iso included
+snmp-server trap-source {{ ctx.snmp.trap_source }}
+snmp-server enable traps snmp linkdown
+snmp-server host {{ ctx.snmp.manager }} vrf {{ ctx.snmp.management_vrf }} version 3 priv {{ ctx.snmp.username }}
+!
+! SNMP user authentication/privacy credentials are intentionally external
+! to NetBox and Git and are not rendered by this template.
+!
+end

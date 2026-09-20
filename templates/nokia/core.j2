@@ -1,0 +1,68 @@
+{% for interface in device.interfaces if not interface.mgmt_only %}
+interface {{ interface.name | srl_ifname }} {
+    admin-state {{ "enable" if interface.enabled else "disable" }}
+    subinterface 0 {
+{% set ipv4 = interface.ip_addresses | addresses_of_family(4) %}
+{% if ipv4 %}
+        ipv4 {
+            admin-state enable
+{% for address in ipv4 %}
+            address {{ address }} {
+            }
+{% endfor %}
+        }
+{% endif %}
+{% set ipv6 = interface.ip_addresses | addresses_of_family(6) %}
+{% if ipv6 %}
+        ipv6 {
+            admin-state enable
+{% for address in ipv6 %}
+            address {{ address }} {
+            }
+{% endfor %}
+        }
+{% endif %}
+    }
+}
+{% endfor %}
+
+network-instance default {
+    type default
+{% for interface in device.interfaces if not interface.mgmt_only %}
+    interface {{ interface.name | srl_subifname }} {
+    }
+{% endfor %}
+    protocols {
+        ospf {
+            instance {{ ctx.ospf.instance_id }} {
+                admin-state enable
+                version {{ ctx.ospf.version }}
+                router-id {{ ctx.router_id }}
+                area {{ ctx.ospf.area }} {
+{% for interface in ctx.ospf.interfaces %}
+                    interface {{ interface | srl_subifname }} {
+{% if interface in ctx.ospf.passive_interfaces %}
+                        passive true
+{% endif %}
+                    }
+{% endfor %}
+                }
+            }
+            instance {{ ctx.ospfv3.instance_id }} {
+                admin-state enable
+                version {{ ctx.ospfv3.version }}
+                address-family {{ ctx.ospfv3.address_family }}
+                router-id {{ ctx.router_id }}
+                area {{ ctx.ospfv3.area }} {
+{% for interface in ctx.ospfv3.interfaces %}
+                    interface {{ interface | srl_subifname }} {
+{% if interface in ctx.ospfv3.passive_interfaces %}
+                        passive true
+{% endif %}
+                    }
+{% endfor %}
+                }
+            }
+        }
+    }
+}

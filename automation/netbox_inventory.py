@@ -64,15 +64,21 @@ def get_all(endpoint):
 
 
 try:
-    devices = get_all("dcim/devices/")
+    devices = get_all("dcim/devices/?include=config_context")
     interfaces = get_all("dcim/interfaces/")
     ip_addresses = get_all("ipam/ip-addresses/")
+    vlans = get_all("ipam/vlans/")
+    fhrp_groups = get_all("ipam/fhrp-groups/")
+    fhrp_assignments = get_all("ipam/fhrp-group-assignments/")
 except requests.RequestException as exc:
     fail(f"NetBox API request failed: {exc}")
 
 
 interfaces_by_device = defaultdict(list)
 ips_by_interface = defaultdict(list)
+fhrp_vips_by_group = defaultdict(list)
+fhrp_by_interface = defaultdict(list)
+vlans_by_site = defaultdict(list)
 
 
 for ip in ip_addresses:
@@ -83,6 +89,32 @@ for ip in ip_addresses:
 
     if interface_id is not None:
         ips_by_interface[interface_id].append(ip["address"])
+
+for group in fhrp_groups:
+    for ip in group.get("ip_addresses") or []:
+        fhrp_vips_by_group[group["id"]].append(ip["address"])
+
+for assignment in fhrp_assignments:
+    if assignment.get("interface_type") != "dcim.interface":
+        continue
+
+    interface_id = assignment.get("interface_id")
+    group = assignment.get("group") or {}
+    group_object_id = group.get("id")
+
+    if interface_id is None or group_object_id is None:
+        continue
+
+    fhrp_by_interface[interface_id].append(
+        {
+            "protocol": group.get("protocol"),
+            "group_id": group.get("group_id"),
+            "priority": assignment.get("priority"),
+            "vip_addresses": sorted(
+                fhrp_vips_by_group.get(group_object_id, [])
+            ),
+        }
+    )
 
 
 for interface in interfaces:
@@ -123,9 +155,40 @@ for interface in interfaces:
         "ip_addresses": sorted(
             ips_by_interface.get(interface["id"], [])
         ),
+        "fhrp_groups": sorted(
+            fhrp_by_interface.get(interface["id"], []),
+            key=lambda item: (
+                item["group_id"],
+                item["protocol"] or "",
+            ),
+        ),
     }
 
     interfaces_by_device[device_id].append(interface_record)
+
+
+for vlan in vlans:
+    site = vlan.get("site")
+    status = vlan.get("status") or {}
+
+    if not site:
+        continue
+
+    status_value = (
+        status.get("value")
+        if isinstance(status, dict)
+        else status
+    )
+
+    if status_value != "active":
+        continue
+
+    vlans_by_site[site["id"]].append(
+        {
+            "vid": vlan["vid"],
+            "name": vlan["name"],
+        }
+    )
 
 
 inventory = []
@@ -141,6 +204,7 @@ for device in devices:
     platform = device.get("platform") or {}
     role = device.get("role") or {}
     device_type = device.get("device_type") or {}
+    site = device.get("site") or {}
 
     manufacturer = None
 
@@ -165,6 +229,11 @@ for device in devices:
         key=lambda item: item["name"],
     )
 
+    device_vlans = sorted(
+        vlans_by_site.get(site.get("id"), []),
+        key=lambda item: item["vid"],
+    )
+
     inventory.append(
         {
             "hostname": device["name"],
@@ -182,8 +251,10 @@ for device in devices:
                 item.get("value") if isinstance(item, dict) else item
                 for item in (custom_fields.get("routing_protocols") or [])
             ),
+            "config_context": device.get("config_context") or {},
             "automation_managed": True,
             "interfaces": device_interfaces,
+            "vlans": device_vlans,
         }
     )
 

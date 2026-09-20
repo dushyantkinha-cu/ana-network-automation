@@ -1,0 +1,61 @@
+hostname {{ device.hostname }}
+!
+vlan {{ device.vlans | map(attribute="vid") | join(",") }}
+!
+{% for interface in device.interfaces if not interface.mgmt_only %}
+interface {{ interface.name | arista_ifname }}
+{% if interface.name.startswith("Et") and interface.mode is none and interface.ip_addresses %}
+   no switchport
+{% endif %}
+{% if interface.mode == "tagged" %}
+   switchport trunk allowed vlan {{ interface.tagged_vlans | join(",") }}
+   switchport mode trunk
+{% elif interface.mode == "access" and interface.untagged_vlan %}
+   switchport access vlan {{ interface.untagged_vlan }}
+{% endif %}
+{% for address in interface.ip_addresses %}
+{% if (address | ip_family) == 4 %}
+   ip address {{ address }}
+{% endif %}
+{% endfor %}
+{% for address in interface.ip_addresses %}
+{% if (address | ip_family) == 6 %}
+   ipv6 address {{ address }}
+{% endif %}
+{% endfor %}
+{% if interface.name in ctx.isis.interfaces %}
+   isis enable {{ ctx.isis.process_id }}
+{% endif %}
+{% for fhrp in interface.fhrp_groups %}
+{% if fhrp.priority != 100 and (loop.first or loop.previtem.group_id != fhrp.group_id) %}
+   vrrp {{ fhrp.group_id }} priority-level {{ fhrp.priority }}
+{% endif %}
+{% for vip in fhrp.vip_addresses %}
+{% if fhrp.protocol == "vrrp2" %}
+   vrrp {{ fhrp.group_id }} ipv4 {{ vip | ip_address_only }}
+{% elif fhrp.protocol == "vrrp3" %}
+   vrrp {{ fhrp.group_id }} ipv6 {{ vip | ip_address_only }}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% if not interface.enabled %}
+   shutdown
+{% endif %}
+!
+{% endfor %}
+
+router isis {{ ctx.isis.process_id }}
+   net {{ ctx.isis.net }}
+   is-type {{ ctx.isis.is_type }}
+   !
+{% if ctx.isis.ipv4_unicast %}
+   address-family ipv4 unicast
+   !
+{% endif %}
+{% if ctx.isis.ipv6_unicast %}
+   address-family ipv6 unicast
+{% if ctx.isis.ipv6_multi_topology %}
+      multi-topology
+{% endif %}
+{% endif %}
+!

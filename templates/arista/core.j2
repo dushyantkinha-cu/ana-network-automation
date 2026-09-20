@@ -1,0 +1,43 @@
+hostname {{ device.hostname }}
+!
+{% for interface in device.interfaces if not interface.mgmt_only %}
+interface {{ interface.name | arista_ifname }}
+{% if interface.name.startswith("Et") %}
+   no switchport
+{% endif %}
+{% for address in interface.ip_addresses %}
+{% if (address | ip_family) == 4 %}
+   ip address {{ address }}
+{% endif %}
+{% endfor %}
+{% for address in interface.ip_addresses %}
+{% if (address | ip_family) == 6 %}
+   ipv6 address {{ address }}
+{% endif %}
+{% endfor %}
+{% if interface.name in ctx.ospfv3.interfaces %}
+   ipv6 ospf {{ ctx.ospfv3.process_id }} area 0.0.0.0
+{% endif %}
+{% if not interface.enabled %}
+   shutdown
+{% endif %}
+!
+{% endfor %}
+
+router ospf {{ ctx.ospf.process_id }}
+   router-id {{ ctx.router_id }}
+{% for interface in ctx.ospf.passive_interfaces %}
+   passive-interface {{ interface | arista_ifname }}
+{% endfor %}
+{% for network in ctx.ospf.networks %}
+   network {{ network.prefix }} area {{ network.area }}
+{% endfor %}
+   max-lsa {{ ctx.ospf.max_lsa }}
+!
+
+ipv6 router ospf {{ ctx.ospfv3.process_id }}
+   router-id {{ ctx.router_id }}
+{% for interface in ctx.ospfv3.passive_interfaces %}
+   passive-interface {{ interface | arista_ifname }}
+{% endfor %}
+!
