@@ -3,6 +3,7 @@
 import ipaddress
 import json
 import os
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -67,6 +68,14 @@ PROFILE_ROLE_MAP = {
     "core": "Multilayer Switch",
 }
 
+SITE_STATUS_CHOICES = {
+    "planned": "Planned",
+    "staging": "Staging",
+    "active": "Active",
+    "decommissioning": "Decommissioning",
+    "retired": "Retired",
+}
+
 GRAFANA_PORT = 3000
 GRAFANA_DASHBOARDS = {
     "overview": {
@@ -81,7 +90,7 @@ GRAFANA_DASHBOARDS = {
         "label": "Routing",
         "uid": "ana-routing",
     },
-        "topology": {
+    "topology": {
         "label": "Live Topology",
         "uid": "adqzdvd",
     },
@@ -221,6 +230,18 @@ def get_staged_devices():
             devices.append(item)
 
     return devices
+
+
+def make_slug(value):
+    slug = value.strip().lower()
+
+    slug = re.sub(
+        r"[^a-z0-9]+",
+        "-",
+        slug,
+    )
+
+    return slug.strip("-")
 
 
 def netbox_headers():
@@ -1195,6 +1216,130 @@ async def update_device_metadata(request: Request):
     )
 
 
+@app.get("/changes/new-site")
+def new_site_page(
+    request: Request,
+    status: str | None = None,
+    message: str | None = None,
+):
+    return templates.TemplateResponse(
+        request=request,
+        name="new_site.html",
+        context={
+            "page_title": "Add Site",
+            "site_status_choices": SITE_STATUS_CHOICES,
+            "action_status": status,
+            "action_message": message,
+            "netbox_url": NETBOX_URL,
+        },
+    )
+
+
+@app.post("/changes/new-site")
+async def create_site(request: Request):
+    form = await request.form()
+
+    name = str(
+        form.get("name", "")
+    ).strip()
+
+    status = str(
+        form.get("status", "")
+    ).strip()
+
+    description = str(
+        form.get("description", "")
+    ).strip()
+
+    if not name:
+        raise HTTPException(
+            status_code=400,
+            detail="Site name is required.",
+        )
+
+    if len(name) > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Site name is too long.",
+        )
+
+    if status not in SITE_STATUS_CHOICES:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid site status.",
+        )
+
+    slug = make_slug(name)
+
+    if not slug:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Site name could not be converted "
+                "to a valid NetBox slug."
+            ),
+        )
+
+    try:
+        existing_name = netbox_get(
+            "/api/dcim/sites/"
+            f"?name={quote(name)}"
+        ).get("results", [])
+
+        if existing_name:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "A NetBox site with this name "
+                    "already exists."
+                ),
+            )
+
+        existing_slug = netbox_get(
+            "/api/dcim/sites/"
+            f"?slug={quote(slug)}"
+        ).get("results", [])
+
+        if existing_slug:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "A NetBox site with this slug "
+                    "already exists."
+                ),
+            )
+
+        site = netbox_post(
+            "/api/dcim/sites/",
+            {
+                "name": name,
+                "slug": slug,
+                "status": status,
+                "description": description,
+            },
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    message = (
+        f"Site '{site['name']}' was created "
+        f"in NetBox with slug '{site['slug']}'."
+    )
+
+    return RedirectResponse(
+        url=(
+            "/changes/new-site"
+            "?status=success"
+            f"&message={quote(message)}"
+        ),
+        status_code=303,
+    )
+
+
 @app.get("/changes/new")
 def new_device_page(
     request: Request,
@@ -1686,6 +1831,7 @@ async def create_staged_device(request: Request):
         ),
         status_code=303,
     )
+
 
 @app.get("/monitoring")
 def monitoring_page(

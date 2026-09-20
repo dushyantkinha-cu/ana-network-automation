@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-heading">
+
+    <div>
+        <h1>Add Site</h1>
+
+        <p>
+            Create a new site directly in the
+            NetBox source of truth.
+        </p>
+    </div>
+
+    <a
+        href="/changes"
+        class="button-secondary button-link"
+    >
+        Back to Changes
+    </a>
+
+</div>
+
+
+{% if action_message %}
+
+<div
+    class="alert
+    {% if action_status == 'success' %}
+    alert-success
+    {% else %}
+    alert-error
+    {% endif %}"
+>
+    {{ action_message }}
+</div>
+
+{% endif %}
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Site Details</h2>
+    </div>
+
+    <form
+        method="post"
+        action="/changes/new-site"
+        class="intent-form"
+    >
+
+        <div class="form-field">
+
+            <label for="name">
+                Site Name
+            </label>
+
+            <input
+                id="name"
+                name="name"
+                type="text"
+                placeholder="Example Branch"
+                required
+            >
+
+            <span class="field-help">
+                The NetBox slug is generated
+                automatically from the site name.
+            </span>
+
+        </div>
+
+
+        <div class="form-field">
+
+            <label for="status">
+                Status
+            </label>
+
+            <select
+                id="status"
+                name="status"
+                required
+            >
+
+                {% for value, label
+                      in site_status_choices.items() %}
+
+                <option
+                    value="{{ value }}"
+                    {% if value == "planned" %}
+                    selected
+                    {% endif %}
+                >
+                    {{ label }}
+                </option>
+
+                {% endfor %}
+
+            </select>
+
+        </div>
+
+
+        <div class="form-field">
+
+            <label for="description">
+                Description
+            </label>
+
+            <textarea
+                id="description"
+                name="description"
+                rows="4"
+                placeholder="Optional site description"
+            ></textarea>
+
+        </div>
+
+
+        <div class="change-warning">
+            Creating a site does not add any devices
+            to automation scope. Devices must be
+            onboarded separately.
+        </div>
+
+
+        <button
+            type="submit"
+            class="button-primary"
+        >
+            Create Site in NetBox
+        </button>
+
+    </form>
+
+</section>
+
+{% endblock %}
