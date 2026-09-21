@@ -121,6 +121,35 @@ def validate_device_for_deployment(
     )
 
 
+def validate_apply_confirmation(
+    requested_hostname,
+    confirmed_hostname,
+):
+    if requested_hostname in DENIED_HOSTNAMES:
+        raise DeploymentSafetyError(
+            f"Deployment to "
+            f"{requested_hostname!r} "
+            "is explicitly denied."
+        )
+
+    if confirmed_hostname is None:
+        raise DeploymentSafetyError(
+            f"{requested_hostname}: --apply "
+            "requires --confirm-device "
+            f"{requested_hostname}."
+        )
+
+    if confirmed_hostname != requested_hostname:
+        raise DeploymentSafetyError(
+            f"{requested_hostname}: confirmation "
+            f"hostname {confirmed_hostname!r} "
+            "does not exactly match the "
+            "requested device."
+        )
+
+    return confirmed_hostname
+
+
 def find_deployment_target(
     inventory,
     hostname,

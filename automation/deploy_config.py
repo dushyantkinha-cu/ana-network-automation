@@ -29,6 +29,7 @@ from automation.deployment.nokia import (  # noqa: E402
 from automation.deployment.common import (  # noqa: E402
     DeploymentSafetyError,
     find_deployment_target,
+    validate_apply_confirmation,
 )
 
 from automation.render_config import (  # noqa: E402
@@ -452,7 +453,41 @@ def main():
         ),
     )
 
+    mode_group.add_argument(
+        "--apply",
+        action="store_true",
+        help=(
+            "Request an actual deployment. "
+            "Requires an exact --confirm-device "
+            "value. Execution remains disabled "
+            "until vendor apply adapters are "
+            "implemented."
+        ),
+    )
+
+    parser.add_argument(
+        "--confirm-device",
+        help=(
+            "Exact device hostname confirmation "
+            "required with --apply."
+        ),
+    )
+
     args = parser.parse_args()
+
+    try:
+        if args.apply:
+            validate_apply_confirmation(
+                args.device,
+                args.confirm_device,
+            )
+        elif args.confirm_device is not None:
+            raise DeploymentSafetyError(
+                "--confirm-device is only valid "
+                "with --apply."
+            )
+    except DeploymentSafetyError as exc:
+        fail(str(exc))
 
     inventory = load_inventory()
 
@@ -495,6 +530,14 @@ def main():
             rendered_path,
         )
         return
+
+    if args.apply:
+        fail(
+            f"{target.hostname}: apply safety "
+            "gates passed, but actual apply "
+            "execution is not implemented yet. "
+            "No device connection was attempted."
+        )
 
     rendered_config = rendered_path.read_text(
         encoding="utf-8"

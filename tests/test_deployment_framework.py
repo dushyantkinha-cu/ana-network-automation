@@ -8,6 +8,7 @@ import automation.deploy_config as deploy_cli
 from automation.deployment.common import (
     DeploymentSafetyError,
     find_deployment_target,
+    validate_apply_confirmation,
     validate_device_for_deployment,
 )
 
@@ -725,3 +726,217 @@ def test_nokia_preview_dispatches_safely(
         "No configuration was committed."
         in output
     )
+
+def test_apply_confirmation_exact_match():
+    assert (
+        validate_apply_confirmation(
+            "R3",
+            "R3",
+        )
+        == "R3"
+    )
+
+
+def test_apply_confirmation_mismatch_is_denied():
+    with pytest.raises(
+        DeploymentSafetyError,
+        match="does not exactly match",
+    ):
+        validate_apply_confirmation(
+            "R3",
+            "r3",
+        )
+
+
+def test_apply_requires_confirmation_before_inventory(
+    monkeypatch,
+):
+    inventory_called = False
+
+    def forbidden_inventory():
+        nonlocal inventory_called
+        inventory_called = True
+
+        raise AssertionError(
+            "Inventory must not load when "
+            "apply confirmation is missing."
+        )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "load_inventory",
+        forbidden_inventory,
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "deploy_config.py",
+            "--device",
+            "R3",
+            "--apply",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        deploy_cli.main()
+
+    assert exc.value.code == 1
+    assert inventory_called is False
+
+
+def test_apply_confirmation_mismatch_before_inventory(
+    monkeypatch,
+):
+    inventory_called = False
+
+    def forbidden_inventory():
+        nonlocal inventory_called
+        inventory_called = True
+
+        raise AssertionError(
+            "Inventory must not load when "
+            "apply confirmation mismatches."
+        )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "load_inventory",
+        forbidden_inventory,
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "deploy_config.py",
+            "--device",
+            "R3",
+            "--apply",
+            "--confirm-device",
+            "r3",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        deploy_cli.main()
+
+    assert exc.value.code == 1
+    assert inventory_called is False
+
+
+def test_confirm_device_rejected_outside_apply(
+    monkeypatch,
+):
+    inventory_called = False
+
+    def forbidden_inventory():
+        nonlocal inventory_called
+        inventory_called = True
+
+        raise AssertionError(
+            "Inventory must not load for an "
+            "invalid confirmation argument."
+        )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "load_inventory",
+        forbidden_inventory,
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "deploy_config.py",
+            "--device",
+            "R3",
+            "--dry-run",
+            "--confirm-device",
+            "R3",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        deploy_cli.main()
+
+    assert exc.value.code == 1
+    assert inventory_called is False
+
+
+def test_apply_cannot_reach_live_adapter(
+    monkeypatch,
+    tmp_path,
+):
+    device = deepcopy(BASE_DEVICE)
+
+    rendered = tmp_path / "R3.cfg"
+
+    rendered.write_text(
+        "hostname R3\n",
+        encoding="utf-8",
+    )
+
+    adapter_called = False
+
+    def forbidden_adapter(
+        *args,
+        **kwargs,
+    ):
+        nonlocal adapter_called
+        adapter_called = True
+
+        raise AssertionError(
+            "Stage 7F.1 apply mode must never "
+            "call a live adapter."
+        )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "load_inventory",
+        lambda: {
+            "devices": [device],
+            "managed_device_count": 1,
+        },
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "render_device",
+        lambda hostname: rendered,
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "preview_arista",
+        forbidden_adapter,
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "preview_cisco",
+        forbidden_adapter,
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "preview_nokia",
+        forbidden_adapter,
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "deploy_config.py",
+            "--device",
+            "R3",
+            "--apply",
+            "--confirm-device",
+            "R3",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        deploy_cli.main()
+
+    assert exc.value.code == 1
+    assert adapter_called is False
