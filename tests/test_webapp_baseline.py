@@ -1,6 +1,11 @@
 from fastapi.testclient import TestClient
 
 import webapp.main as main
+import webapp.routers.core as core_router
+import webapp.routers.automation as automation_router
+import webapp.routers.changes as changes_router
+import webapp.routers.sites as sites_router
+import webapp.routers.onboarding as onboarding_router
 
 
 client = TestClient(main.app)
@@ -40,7 +45,7 @@ def test_api_inventory(monkeypatch):
     }
 
     monkeypatch.setattr(
-        main,
+        core_router,
         "load_inventory",
         lambda: inventory,
     )
@@ -53,7 +58,7 @@ def test_api_inventory(monkeypatch):
 
 def test_dashboard(monkeypatch):
     monkeypatch.setattr(
-        main,
+        core_router,
         "get_devices",
         lambda: [MANAGED_DEVICE],
     )
@@ -66,7 +71,7 @@ def test_dashboard(monkeypatch):
 
 def test_inventory_page(monkeypatch):
     monkeypatch.setattr(
-        main,
+        core_router,
         "get_devices",
         lambda: [MANAGED_DEVICE],
     )
@@ -79,19 +84,19 @@ def test_inventory_page(monkeypatch):
 
 def test_automation_page(monkeypatch):
     monkeypatch.setattr(
-        main,
+        automation_router,
         "get_devices",
         lambda: [MANAGED_DEVICE],
     )
 
     monkeypatch.setattr(
-        main,
+        automation_router,
         "latest_validation_report",
         lambda: None,
     )
 
     monkeypatch.setattr(
-        main,
+        automation_router,
         "golden_snapshots",
         lambda: [],
     )
@@ -103,7 +108,7 @@ def test_automation_page(monkeypatch):
 
 def test_validation_action_success(monkeypatch):
     monkeypatch.setattr(
-        main,
+        automation_router,
         "run_validation",
         lambda: {
             "returncode": 0,
@@ -125,19 +130,19 @@ def test_validation_action_success(monkeypatch):
 
 def test_changes_page(monkeypatch):
     monkeypatch.setattr(
-        main,
+        changes_router,
         "get_devices",
         lambda: [MANAGED_DEVICE],
     )
 
     monkeypatch.setattr(
-        main,
+        changes_router,
         "get_choice_values",
         lambda choice_set_id: [],
     )
 
     monkeypatch.setattr(
-        main,
+        changes_router,
         "get_sites",
         lambda: [
             {
@@ -161,37 +166,37 @@ def test_new_site_page():
 
 def test_new_device_page(monkeypatch):
     monkeypatch.setattr(
-        main,
+        onboarding_router,
         "get_sites",
         lambda: [],
     )
 
     monkeypatch.setattr(
-        main,
+        onboarding_router,
         "get_device_types",
         lambda: [],
     )
 
     monkeypatch.setattr(
-        main,
+        onboarding_router,
         "get_platforms",
         lambda: [],
     )
 
     monkeypatch.setattr(
-        main,
+        onboarding_router,
         "get_network_roles",
         lambda: [],
     )
 
     monkeypatch.setattr(
-        main,
+        onboarding_router,
         "get_choice_values",
         lambda choice_set_id: [],
     )
 
     monkeypatch.setattr(
-        main,
+        onboarding_router,
         "get_staged_devices",
         lambda: [],
     )
@@ -229,7 +234,7 @@ def test_unknown_monitoring_dashboard():
 
 def test_r5_cannot_update_intent(monkeypatch):
     monkeypatch.setattr(
-        main,
+        changes_router,
         "find_managed_device",
         lambda hostname: {
             "hostname": "R5",
@@ -251,7 +256,7 @@ def test_r5_cannot_update_intent(monkeypatch):
 
 def test_r5_cannot_update_wan(monkeypatch):
     monkeypatch.setattr(
-        main,
+        changes_router,
         "find_managed_device",
         lambda hostname: {
             "hostname": "R5",
@@ -273,7 +278,7 @@ def test_r5_cannot_update_wan(monkeypatch):
 
 def test_r5_cannot_update_metadata(monkeypatch):
     monkeypatch.setattr(
-        main,
+        changes_router,
         "find_managed_device",
         lambda hostname: {
             "hostname": "R5",
@@ -301,7 +306,7 @@ def test_invalid_site_status_creates_nothing(
         )
 
     monkeypatch.setattr(
-        main,
+        sites_router,
         "netbox_post",
         forbidden_post,
     )
@@ -327,7 +332,7 @@ def test_invalid_hostname_creates_nothing(
         )
 
     monkeypatch.setattr(
-        main,
+        onboarding_router,
         "netbox_post",
         forbidden_post,
     )
