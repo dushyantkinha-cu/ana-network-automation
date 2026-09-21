@@ -14,13 +14,19 @@ if str(REPO_ROOT) not in sys.path:
 
 from automation.deployment.arista import (  # noqa: E402
     AristaPreviewError,
-    preview_rendered_config,
+    preview_rendered_config as preview_arista,
+)
+
+from automation.deployment.cisco import (  # noqa: E402
+    CiscoPreviewError,
+    preview_rendered_config as preview_cisco,
 )
 
 from automation.deployment.common import (  # noqa: E402
     DeploymentSafetyError,
     find_deployment_target,
 )
+
 from automation.render_config import (  # noqa: E402
     load_inventory,
 )
@@ -111,6 +117,7 @@ def display_path(path):
     except ValueError:
         return path
 
+
 def get_device_record(
     inventory,
     hostname,
@@ -126,6 +133,7 @@ def get_device_record(
         f"{hostname}: device record disappeared "
         f"from inventory."
     )
+
 
 def print_plan(
     target,
@@ -189,10 +197,10 @@ def print_plan(
         "No device configuration was attempted."
     )
 
-def print_preview_result(
+
+def print_preview_header(
     target,
     rendered_path,
-    preview,
 ):
     print(
         "=== DEPLOYMENT PREVIEW RESULT ==="
@@ -256,6 +264,17 @@ def print_preview_result(
         "Mode:                PREVIEW"
     )
 
+
+def print_arista_preview_result(
+    target,
+    rendered_path,
+    preview,
+):
+    print_preview_header(
+        target,
+        rendered_path,
+    )
+
     print(
         f"Session:             "
         f"{preview.session_name}"
@@ -284,6 +303,57 @@ def print_preview_result(
     print(
         "No configuration was committed."
     )
+
+
+def print_cisco_preview_result(
+    target,
+    rendered_path,
+    preview,
+):
+    print_preview_header(
+        target,
+        rendered_path,
+    )
+
+    print(
+        f"CLI commands staged: "
+        f"{preview.command_count}"
+    )
+
+    print(
+        f"Rollback started:    "
+        f"{preview.rollback_started}"
+    )
+
+    print(
+        f"Rollback completed:  "
+        f"{preview.rollback_completed}"
+    )
+
+    print(
+        f"Config restored:     "
+        f"{preview.config_restored}"
+    )
+
+    print(
+        f"Before hash:         "
+        f"{preview.before_hash}"
+    )
+
+    print(
+        f"After hash:          "
+        f"{preview.after_hash}"
+    )
+
+    print()
+    print(
+        "Preview changes were rolled back."
+    )
+
+    print(
+        "No configuration was confirmed or saved."
+    )
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -349,7 +419,11 @@ def main():
 
         if (
             args.preview
-            and target.adapter != "arista"
+            and target.adapter
+            not in {
+                "arista",
+                "cisco",
+            }
         ):
             raise DeploymentSafetyError(
                 f"{target.hostname}: preview is "
@@ -367,29 +441,45 @@ def main():
         )
         return
 
-    try:
-        rendered_config = (
-            rendered_path.read_text(
-                encoding="utf-8"
-            )
-        )
-
-        preview = preview_rendered_config(
-            device,
-            rendered_config,
-        )
-
-    except AristaPreviewError as exc:
-        fail(
-            f"{target.hostname}: "
-            f"preview failed: {exc}"
-        )
-
-    print_preview_result(
-        target,
-        rendered_path,
-        preview,
+    rendered_config = rendered_path.read_text(
+        encoding="utf-8"
     )
+
+    if target.adapter == "arista":
+        try:
+            preview = preview_arista(
+                device,
+                rendered_config,
+            )
+        except AristaPreviewError as exc:
+            fail(
+                f"{target.hostname}: "
+                f"preview failed: {exc}"
+            )
+
+        print_arista_preview_result(
+            target,
+            rendered_path,
+            preview,
+        )
+
+    elif target.adapter == "cisco":
+        try:
+            preview = preview_cisco(
+                device,
+                rendered_config,
+            )
+        except CiscoPreviewError as exc:
+            fail(
+                f"{target.hostname}: "
+                f"preview failed: {exc}"
+            )
+
+        print_cisco_preview_result(
+            target,
+            rendered_path,
+            preview,
+        )
 
 if __name__ == "__main__":
     main()

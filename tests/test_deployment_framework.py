@@ -290,6 +290,7 @@ def test_dry_run_plan_is_non_destructive(
         in output
     )
 
+
 def test_arista_preview_dispatches_safely(
     monkeypatch,
     tmp_path,
@@ -352,7 +353,7 @@ def test_arista_preview_dispatches_safely(
 
     monkeypatch.setattr(
         deploy_cli,
-        "preview_rendered_config",
+        "preview_arista",
         fake_preview,
     )
 
@@ -405,69 +406,6 @@ def test_arista_preview_dispatches_safely(
     )
 
 
-def test_preview_rejects_non_arista_adapter(
-    monkeypatch,
-    tmp_path,
-):
-    device = deepcopy(BASE_DEVICE)
-
-    rendered = tmp_path / "R3.cfg"
-
-    rendered.write_text(
-        "hostname R3\n",
-        encoding="utf-8",
-    )
-
-    preview_called = False
-
-    def forbidden_preview(
-        device,
-        rendered_config,
-    ):
-        nonlocal preview_called
-        preview_called = True
-
-        raise AssertionError(
-            "Cisco preview must not reach "
-            "the Arista adapter."
-        )
-
-    monkeypatch.setattr(
-        deploy_cli,
-        "load_inventory",
-        lambda: {
-            "devices": [device],
-            "managed_device_count": 1,
-        },
-    )
-
-    monkeypatch.setattr(
-        deploy_cli,
-        "render_device",
-        lambda hostname: rendered,
-    )
-
-    monkeypatch.setattr(
-        deploy_cli,
-        "preview_rendered_config",
-        forbidden_preview,
-    )
-
-    monkeypatch.setattr(
-        "sys.argv",
-        [
-            "deploy_config.py",
-            "--device",
-            "R3",
-            "--preview",
-        ],
-    )
-
-    with pytest.raises(SystemExit) as exc:
-        deploy_cli.main()
-
-    assert exc.value.code == 1
-    assert preview_called is False
 
 
 def test_dry_run_never_calls_preview(
@@ -509,7 +447,12 @@ def test_dry_run_never_calls_preview(
 
     monkeypatch.setattr(
         deploy_cli,
-        "preview_rendered_config",
+        "preview_arista",
+        forbidden_preview,
+    )
+    monkeypatch.setattr(
+        deploy_cli,
+        "preview_cisco",
         forbidden_preview,
     )
 
@@ -524,3 +467,178 @@ def test_dry_run_never_calls_preview(
     )
 
     deploy_cli.main()
+
+
+def test_cisco_preview_dispatches_safely(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    device = deepcopy(BASE_DEVICE)
+
+    rendered = tmp_path / "R3.cfg"
+
+    rendered.write_text(
+        "hostname R3\n",
+        encoding="utf-8",
+    )
+
+    observed = {}
+
+    def fake_preview(
+        preview_device,
+        rendered_config,
+    ):
+        observed["hostname"] = (
+            preview_device["hostname"]
+        )
+
+        observed["rendered_config"] = (
+            rendered_config
+        )
+
+        return SimpleNamespace(
+            command_count=1,
+            rollback_started=True,
+            rollback_completed=True,
+            config_restored=True,
+            before_hash="abc123",
+            after_hash="abc123",
+        )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "load_inventory",
+        lambda: {
+            "devices": [device],
+            "managed_device_count": 1,
+        },
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "render_device",
+        lambda hostname: rendered,
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "preview_cisco",
+        fake_preview,
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "deploy_config.py",
+            "--device",
+            "R3",
+            "--preview",
+        ],
+    )
+
+    deploy_cli.main()
+
+    output = capsys.readouterr().out
+
+    assert observed["hostname"] == "R3"
+
+    assert (
+        observed["rendered_config"]
+        == "hostname R3\n"
+    )
+
+    assert (
+        "Adapter:             cisco"
+        in output
+    )
+
+    assert (
+        "Mode:                PREVIEW"
+        in output
+    )
+
+    assert (
+        "Rollback started:    True"
+        in output
+    )
+
+    assert (
+        "Rollback completed:  True"
+        in output
+    )
+
+    assert (
+        "Config restored:     True"
+        in output
+    )
+
+    assert (
+        "Before hash:         abc123"
+        in output
+    )
+
+    assert (
+        "After hash:          abc123"
+        in output
+    )
+
+    assert (
+        "No configuration was confirmed or saved."
+        in output
+    )
+
+
+def test_preview_rejects_nokia_adapter(
+    monkeypatch,
+    tmp_path,
+):
+    device = deepcopy(BASE_DEVICE)
+
+    device.update(
+        {
+            "hostname": "S4",
+            "device_id": 9,
+            "manufacturer": "Nokia",
+            "platform": "Nokia SR Linux",
+            "management_ip": "172.20.20.4/24",
+            "config_profile": "core",
+        }
+    )
+
+    rendered = tmp_path / "S4.cfg"
+
+    rendered.write_text(
+        "system {\n}\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "load_inventory",
+        lambda: {
+            "devices": [device],
+            "managed_device_count": 1,
+        },
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "render_device",
+        lambda hostname: rendered,
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "deploy_config.py",
+            "--device",
+            "S4",
+            "--preview",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        deploy_cli.main()
+
+    assert exc.value.code == 1
