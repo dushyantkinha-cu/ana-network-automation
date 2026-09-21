@@ -205,6 +205,13 @@ for device in devices:
     role = device.get("role") or {}
     device_type = device.get("device_type") or {}
     site = device.get("site") or {}
+    status = device.get("status") or {}
+
+    status_value = (
+        status.get("value")
+        if isinstance(status, dict)
+        else status
+    )
 
     manufacturer = None
 
@@ -238,6 +245,7 @@ for device in devices:
         {
             "hostname": device["name"],
             "device_id": device["id"],
+            "status": status_value,
             "manufacturer": manufacturer,
             "platform": platform.get("name"),
             "role": role.get("name"),
