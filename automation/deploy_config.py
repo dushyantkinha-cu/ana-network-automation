@@ -21,6 +21,10 @@ from automation.deployment.cisco import (  # noqa: E402
     CiscoPreviewError,
     preview_rendered_config as preview_cisco,
 )
+from automation.deployment.nokia import (  # noqa: E402
+    NokiaPreviewError,
+    preview_rendered_config as preview_nokia,
+)
 
 from automation.deployment.common import (  # noqa: E402
     DeploymentSafetyError,
@@ -355,6 +359,56 @@ def print_cisco_preview_result(
     )
 
 
+def print_nokia_preview_result(
+    target,
+    rendered_path,
+    preview,
+):
+    print_preview_header(
+        target,
+        rendered_path,
+    )
+
+    print(
+        f"Candidate:           "
+        f"{preview.candidate_name}"
+    )
+
+    print(
+        f"CLI commands staged: "
+        f"{preview.command_count}"
+    )
+
+    print(
+        f"Validation passed:   "
+        f"{preview.validation_passed}"
+    )
+
+    print(
+        f"Discarded:           "
+        f"{preview.discarded}"
+    )
+
+    print()
+    print(
+        "=== SANITIZED CANDIDATE DIFF ==="
+    )
+
+    if preview.diff:
+        print(preview.diff)
+    else:
+        print("<no diff>")
+
+    print()
+    print(
+        "Preview candidate was discarded."
+    )
+
+    print(
+        "No configuration was committed."
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=(
@@ -423,6 +477,7 @@ def main():
             not in {
                 "arista",
                 "cisco",
+                "nokia",
             }
         ):
             raise DeploymentSafetyError(
@@ -476,6 +531,24 @@ def main():
             )
 
         print_cisco_preview_result(
+            target,
+            rendered_path,
+            preview,
+        )
+
+    elif target.adapter == "nokia":
+        try:
+            preview = preview_nokia(
+                device,
+                rendered_config,
+            )
+        except NokiaPreviewError as exc:
+            fail(
+                f"{target.hostname}: "
+                f"preview failed: {exc}"
+            )
+
+        print_nokia_preview_result(
             target,
             rendered_path,
             preview,

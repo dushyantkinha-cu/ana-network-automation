@@ -455,6 +455,11 @@ def test_dry_run_never_calls_preview(
         "preview_cisco",
         forbidden_preview,
     )
+    monkeypatch.setattr(
+        deploy_cli,
+        "preview_nokia",
+        forbidden_preview,
+    )
 
     monkeypatch.setattr(
         "sys.argv",
@@ -589,9 +594,10 @@ def test_cisco_preview_dispatches_safely(
     )
 
 
-def test_preview_rejects_nokia_adapter(
+def test_nokia_preview_dispatches_safely(
     monkeypatch,
     tmp_path,
+    capsys,
 ):
     device = deepcopy(BASE_DEVICE)
 
@@ -609,9 +615,32 @@ def test_preview_rejects_nokia_adapter(
     rendered = tmp_path / "S4.cfg"
 
     rendered.write_text(
-        "system {\n}\n",
+        "interface lo0 {\n"
+        "}\n",
         encoding="utf-8",
     )
+
+    observed = {}
+
+    def fake_preview(
+        preview_device,
+        rendered_config,
+    ):
+        observed["hostname"] = (
+            preview_device["hostname"]
+        )
+
+        observed["rendered_config"] = (
+            rendered_config
+        )
+
+        return SimpleNamespace(
+            candidate_name="ANA-S4-TEST",
+            command_count=2,
+            validation_passed=True,
+            diff="",
+            discarded=True,
+        )
 
     monkeypatch.setattr(
         deploy_cli,
@@ -629,6 +658,12 @@ def test_preview_rejects_nokia_adapter(
     )
 
     monkeypatch.setattr(
+        deploy_cli,
+        "preview_nokia",
+        fake_preview,
+    )
+
+    monkeypatch.setattr(
         "sys.argv",
         [
             "deploy_config.py",
@@ -638,7 +673,55 @@ def test_preview_rejects_nokia_adapter(
         ],
     )
 
-    with pytest.raises(SystemExit) as exc:
-        deploy_cli.main()
+    deploy_cli.main()
 
-    assert exc.value.code == 1
+    output = capsys.readouterr().out
+
+    assert observed["hostname"] == "S4"
+
+    assert (
+        observed["rendered_config"]
+        == "interface lo0 {\n}\n"
+    )
+
+    assert (
+        "Adapter:             nokia"
+        in output
+    )
+
+    assert (
+        "Mode:                PREVIEW"
+        in output
+    )
+
+    assert (
+        "Candidate:           ANA-S4-TEST"
+        in output
+    )
+
+    assert (
+        "CLI commands staged: 2"
+        in output
+    )
+
+    assert (
+        "Validation passed:   True"
+        in output
+    )
+
+    assert (
+        "Discarded:           True"
+        in output
+    )
+
+    assert (
+        "=== SANITIZED CANDIDATE DIFF ==="
+        in output
+    )
+
+    assert "<no diff>" in output
+
+    assert (
+        "No configuration was committed."
+        in output
+    )
