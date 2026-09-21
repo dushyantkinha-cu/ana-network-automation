@@ -353,3 +353,365 @@ def preview_rendered_config(
         session_name=session_name,
         connection_factory=connection_factory,
     )
+
+class AristaApplyError(RuntimeError):
+    """Raised when an Arista apply transaction fails."""
+
+
+@dataclass(frozen=True)
+class AristaApplyResult:
+    session_name: str
+    command_count: int
+    diff: str
+    validation_passed: bool
+    confirmed: bool
+    persisted: bool
+    rolled_back: bool
+
+
+COMMIT_TIMER_PATTERN = re.compile(
+    r"^(\d{2}):(\d{2}):(\d{2})$"
+)
+
+
+def validate_commit_timer(commit_timer):
+    if not isinstance(commit_timer, str):
+        raise AristaApplyError(
+            "Commit timer must be a string."
+        )
+
+    match = COMMIT_TIMER_PATTERN.fullmatch(
+        commit_timer
+    )
+
+    if match is None:
+        raise AristaApplyError(
+            "Commit timer must use HH:MM:SS "
+            "format."
+        )
+
+    hours, minutes, seconds = (
+        int(value)
+        for value in match.groups()
+    )
+
+    if minutes > 59 or seconds > 59:
+        raise AristaApplyError(
+            "Commit timer contains an invalid "
+            "minute or second value."
+        )
+
+    total_seconds = (
+        hours * 3600
+        + minutes * 60
+        + seconds
+    )
+
+    if not 30 <= total_seconds <= 3600:
+        raise AristaApplyError(
+            "Commit timer must be between "
+            "30 seconds and 1 hour."
+        )
+
+    return commit_timer
+
+
+def validate_apply_commands(commands):
+    try:
+        return validate_preview_commands(commands)
+    except AristaPreviewError as exc:
+        raise AristaApplyError(
+            str(exc)
+        ) from exc
+
+
+def check_apply_cli_output(
+    command,
+    output,
+):
+    try:
+        check_cli_output(
+            command,
+            output,
+        )
+    except AristaPreviewError as exc:
+        raise AristaApplyError(
+            str(exc)
+        ) from exc
+
+
+def abort_apply_session(
+    connection,
+    session_name,
+    timer_started,
+):
+    if timer_started:
+        command = (
+            f"configure session "
+            f"{session_name} abort"
+        )
+    else:
+        command = "abort"
+
+    output = connection.send_command_timing(
+        command
+    )
+
+    check_apply_cli_output(
+        command,
+        output,
+    )
+
+
+def apply_commands(
+    device,
+    commands,
+    post_validate,
+    session_name=None,
+    commit_timer="00:02:00",
+    connection_factory=None,
+):
+    if device.get("platform") != "Arista EOS":
+        raise AristaApplyError(
+            "Arista apply adapter requires "
+            "platform 'Arista EOS'."
+        )
+
+    if not callable(post_validate):
+        raise AristaApplyError(
+            "post_validate must be callable."
+        )
+
+    commands = validate_apply_commands(
+        commands
+    )
+
+    commit_timer = validate_commit_timer(
+        commit_timer
+    )
+
+    if session_name is None:
+        session_name = make_session_name(
+            device.get(
+                "hostname",
+                "UNKNOWN",
+            )
+        )
+
+    if connection_factory is None:
+        connection_factory = open_connection
+
+    connection = connection_factory(device)
+
+    session_entered = False
+    timer_started = False
+    transaction_finished = False
+
+    try:
+        session_command = (
+            f"configure session "
+            f"{session_name}"
+        )
+
+        output = connection.send_command_timing(
+            session_command
+        )
+
+        check_apply_cli_output(
+            session_command,
+            output,
+        )
+
+        session_entered = True
+
+        stage_output = connection.send_config_set(
+            commands,
+            enter_config_mode=False,
+            exit_config_mode=False,
+            cmd_verify=True,
+        )
+
+        check_apply_cli_output(
+            "staged configuration",
+            stage_output,
+        )
+
+        diff_command = (
+            "show session-config diff"
+        )
+
+        raw_diff = (
+            connection.send_command_timing(
+                diff_command
+            )
+        )
+
+        check_apply_cli_output(
+            diff_command,
+            raw_diff,
+        )
+
+        diff = sanitize_diff(raw_diff)
+
+        timer_command = (
+            f"commit timer {commit_timer}"
+        )
+
+        timer_output = (
+            connection.send_command_timing(
+                timer_command
+            )
+        )
+
+        check_apply_cli_output(
+            timer_command,
+            timer_output,
+        )
+
+        timer_started = True
+
+        try:
+            validation_passed = post_validate()
+        except Exception as exc:
+            raise AristaApplyError(
+                "Post-deployment validation "
+                "raised an exception."
+            ) from exc
+
+        if not isinstance(
+            validation_passed,
+            bool,
+        ):
+            raise AristaApplyError(
+                "Post-deployment validation "
+                "must return True or False."
+            )
+
+        if not validation_passed:
+            abort_apply_session(
+                connection,
+                session_name,
+                timer_started=True,
+            )
+
+            transaction_finished = True
+
+            return AristaApplyResult(
+                session_name=session_name,
+                command_count=len(commands),
+                diff=diff,
+                validation_passed=False,
+                confirmed=False,
+                persisted=False,
+                rolled_back=True,
+            )
+
+        confirm_command = (
+            f"configure session "
+            f"{session_name} commit"
+        )
+
+        confirm_output = (
+            connection.send_command_timing(
+                confirm_command
+            )
+        )
+
+        check_apply_cli_output(
+            confirm_command,
+            confirm_output,
+        )
+
+        transaction_finished = True
+
+        persist_command = (
+            "copy running-config startup-config"
+        )
+
+        try:
+            persist_output = (
+                connection.send_command_timing(
+                    persist_command
+                )
+            )
+
+            check_apply_cli_output(
+                persist_command,
+                persist_output,
+            )
+        except Exception as exc:
+            raise AristaApplyError(
+                "Running configuration was "
+                "confirmed, but persistence to "
+                "startup-config failed. Manual "
+                "recovery is required."
+            ) from exc
+
+        return AristaApplyResult(
+            session_name=session_name,
+            command_count=len(commands),
+            diff=diff,
+            validation_passed=True,
+            confirmed=True,
+            persisted=True,
+            rolled_back=False,
+        )
+
+    except Exception as exc:
+        if (
+            session_entered
+            and not transaction_finished
+        ):
+            try:
+                abort_apply_session(
+                    connection,
+                    session_name,
+                    timer_started=timer_started,
+                )
+            except Exception as rollback_exc:
+                raise AristaApplyError(
+                    "Arista apply failed and the "
+                    "automatic rollback attempt "
+                    "also failed. The commit timer "
+                    "may still be active."
+                ) from rollback_exc
+
+        if isinstance(
+            exc,
+            AristaApplyError,
+        ):
+            raise
+
+        raise AristaApplyError(
+            "Arista apply transaction failed."
+        ) from exc
+
+    finally:
+        connection.disconnect()
+
+
+def apply_rendered_config(
+    device,
+    rendered_config,
+    post_validate,
+    session_name=None,
+    commit_timer="00:02:00",
+    connection_factory=None,
+):
+    try:
+        commands = rendered_config_to_commands(
+            rendered_config
+        )
+    except AristaPreviewError as exc:
+        raise AristaApplyError(
+            str(exc)
+        ) from exc
+
+    return apply_commands(
+        device,
+        commands,
+        post_validate=post_validate,
+        session_name=session_name,
+        commit_timer=commit_timer,
+        connection_factory=connection_factory,
+    )

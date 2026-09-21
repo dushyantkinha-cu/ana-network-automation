@@ -1,11 +1,15 @@
 import pytest
 
 from automation.deployment.arista import (
+    AristaApplyError,
     AristaPreviewError,
+    apply_commands,
+    apply_rendered_config,
     preview_commands,
     preview_rendered_config,
     rendered_config_to_commands,
     sanitize_diff,
+    validate_commit_timer,
     validate_preview_commands,
 )
 
@@ -20,9 +24,13 @@ class FakeConnection:
         self,
         diff="",
         reject_command=None,
+        timing_reject_command=None,
     ):
         self.diff = diff
         self.reject_command = reject_command
+        self.timing_reject_command = (
+            timing_reject_command
+        )
         self.commands = []
         self.config_set_calls = []
         self.disconnected = False
@@ -32,6 +40,12 @@ class FakeConnection:
         command,
     ):
         self.commands.append(command)
+
+        if (
+            command
+            == self.timing_reject_command
+        ):
+            return "% Invalid input"
 
         if command == "show session-config diff":
             return self.diff
@@ -430,3 +444,293 @@ interface Ethernet1
 
     assert connection.commands[-1] == "abort"
     assert connection.disconnected is True
+
+def test_apply_success_uses_commit_timer_and_persists():
+    connection = FakeConnection(
+        diff="+description STAGE7F"
+    )
+
+    def post_validate():
+        connection.commands.append(
+            "<post-validation>"
+        )
+        return True
+
+    result = apply_commands(
+        ARISTA_DEVICE,
+        [
+            "interface Ethernet1",
+            "description STAGE7F",
+            "exit",
+        ],
+        post_validate=post_validate,
+        session_name="ANA-APPLY",
+        connection_factory=lambda device: connection,
+    )
+
+    assert result.session_name == "ANA-APPLY"
+    assert result.command_count == 3
+    assert result.validation_passed is True
+    assert result.confirmed is True
+    assert result.persisted is True
+    assert result.rolled_back is False
+    assert result.diff == "+description STAGE7F"
+
+    assert connection.commands == [
+        "configure session ANA-APPLY",
+        "interface Ethernet1",
+        "description STAGE7F",
+        "exit",
+        "show session-config diff",
+        "commit timer 00:02:00",
+        "<post-validation>",
+        "configure session ANA-APPLY commit",
+        "copy running-config startup-config",
+    ]
+
+    assert "abort" not in connection.commands
+    assert connection.disconnected is True
+
+
+def test_apply_validation_failure_rolls_back():
+    connection = FakeConnection(
+        diff="+description BAD"
+    )
+
+    def post_validate():
+        connection.commands.append(
+            "<post-validation>"
+        )
+        return False
+
+    result = apply_commands(
+        ARISTA_DEVICE,
+        ["hostname R1"],
+        post_validate=post_validate,
+        session_name="ANA-FAIL",
+        connection_factory=lambda device: connection,
+    )
+
+    assert result.validation_passed is False
+    assert result.confirmed is False
+    assert result.persisted is False
+    assert result.rolled_back is True
+
+    assert (
+        "configure session ANA-FAIL abort"
+        in connection.commands
+    )
+
+    assert (
+        "configure session ANA-FAIL commit"
+        not in connection.commands
+    )
+
+    assert (
+        "copy running-config startup-config"
+        not in connection.commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_validation_exception_rolls_back():
+    connection = FakeConnection()
+
+    def post_validate():
+        raise RuntimeError(
+            "validation exploded"
+        )
+
+    with pytest.raises(
+        AristaApplyError,
+        match="validation raised an exception",
+    ):
+        apply_commands(
+            ARISTA_DEVICE,
+            ["hostname R1"],
+            post_validate=post_validate,
+            session_name="ANA-EXCEPTION",
+            connection_factory=lambda device: connection,
+        )
+
+    assert (
+        "configure session "
+        "ANA-EXCEPTION abort"
+        in connection.commands
+    )
+
+    assert (
+        "configure session "
+        "ANA-EXCEPTION commit"
+        not in connection.commands
+    )
+
+    assert (
+        "copy running-config startup-config"
+        not in connection.commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_stage_failure_aborts_before_timer():
+    connection = FakeConnection(
+        reject_command="hostname BAD",
+    )
+
+    with pytest.raises(
+        AristaApplyError,
+        match="EOS rejected",
+    ):
+        apply_commands(
+            ARISTA_DEVICE,
+            ["hostname BAD"],
+            post_validate=lambda: True,
+            session_name="ANA-STAGE-FAIL",
+            connection_factory=lambda device: connection,
+        )
+
+    assert "abort" in connection.commands
+
+    assert not any(
+        command.startswith("commit timer ")
+        for command in connection.commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_confirm_failure_attempts_rollback():
+    connection = FakeConnection(
+        timing_reject_command=(
+            "configure session "
+            "ANA-CONFIRM-FAIL commit"
+        ),
+    )
+
+    with pytest.raises(
+        AristaApplyError,
+        match="EOS rejected",
+    ):
+        apply_commands(
+            ARISTA_DEVICE,
+            ["hostname R1"],
+            post_validate=lambda: True,
+            session_name="ANA-CONFIRM-FAIL",
+            connection_factory=lambda device: connection,
+        )
+
+    assert (
+        "configure session "
+        "ANA-CONFIRM-FAIL abort"
+        in connection.commands
+    )
+
+    assert (
+        "copy running-config startup-config"
+        not in connection.commands
+    )
+
+
+def test_apply_persistence_failure_is_explicit():
+    connection = FakeConnection(
+        timing_reject_command=(
+            "copy running-config startup-config"
+        ),
+    )
+
+    with pytest.raises(
+        AristaApplyError,
+        match="persistence to startup-config failed",
+    ):
+        apply_commands(
+            ARISTA_DEVICE,
+            ["hostname R1"],
+            post_validate=lambda: True,
+            session_name="ANA-SAVE-FAIL",
+            connection_factory=lambda device: connection,
+        )
+
+    assert (
+        "configure session "
+        "ANA-SAVE-FAIL commit"
+        in connection.commands
+    )
+
+    assert (
+        "copy running-config startup-config"
+        in connection.commands
+    )
+
+    assert (
+        "configure session "
+        "ANA-SAVE-FAIL abort"
+        not in connection.commands
+    )
+
+
+@pytest.mark.parametrize(
+    "timer",
+    [
+        "00:00:29",
+        "01:00:01",
+        "00:60:00",
+        "BAD",
+    ],
+)
+def test_apply_rejects_unsafe_commit_timer(timer):
+    with pytest.raises(
+        AristaApplyError,
+        match="Commit timer",
+    ):
+        validate_commit_timer(timer)
+
+
+def test_apply_rendered_config_translates_hierarchy():
+    connection = FakeConnection(
+        diff="+description APPLY"
+    )
+
+    rendered = """\
+interface Ethernet1
+   description APPLY
+!
+"""
+
+    result = apply_rendered_config(
+        ARISTA_DEVICE,
+        rendered,
+        post_validate=lambda: True,
+        session_name="ANA-RENDERED",
+        connection_factory=lambda device: connection,
+    )
+
+    commands, _ = (
+        connection.config_set_calls[0]
+    )
+
+    assert commands == [
+        "interface Ethernet1",
+        "description APPLY",
+        "exit",
+    ]
+
+    assert result.command_count == 3
+    assert result.confirmed is True
+    assert result.persisted is True
+
+
+def test_apply_wrong_platform_is_denied():
+    device = dict(ARISTA_DEVICE)
+    device["platform"] = "Cisco IOS-XE"
+
+    with pytest.raises(
+        AristaApplyError,
+        match="requires platform",
+    ):
+        apply_commands(
+            device,
+            ["hostname R3"],
+            post_validate=lambda: True,
+        )
