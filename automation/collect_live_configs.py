@@ -1,45 +1,41 @@
 #!/usr/bin/env python3
 
 import argparse
-import ipaddress
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-from netmiko import ConnectHandler
-
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-INVENTORY_SCRIPT = REPO_ROOT / "automation" / "netbox_inventory.py"
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "live-configs"
+
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 
-PLATFORM_SETTINGS = {
-    "Arista EOS": {
-        "device_type": "arista_eos",
-        "username_env": "ARISTA_USERNAME",
-        "password_env": "ARISTA_PASSWORD",
-        "command": "show running-config",
-        "enable": True,
-    },
-    "Cisco IOS-XE": {
-        "device_type": "cisco_ios",
-        "username_env": "CISCO_USERNAME",
-        "password_env": "CISCO_PASSWORD",
-        "command": "show running-config",
-        "enable": False,
-    },
-    "Nokia SR Linux": {
-        "device_type": "nokia_srl",
-        "username_env": "NOKIA_USERNAME",
-        "password_env": "NOKIA_PASSWORD",
-        "command": "info from running /",
-        "enable": False,
-    },
+from automation.device_connection import (  # noqa: E402
+    get_platform_settings,
+    open_connection,
+)
+
+
+INVENTORY_SCRIPT = (
+    REPO_ROOT
+    / "automation"
+    / "netbox_inventory.py"
+)
+
+DEFAULT_OUTPUT_DIR = (
+    REPO_ROOT
+    / "live-configs"
+)
+
+COLLECTION_COMMANDS = {
+    "Arista EOS": "show running-config",
+    "Cisco IOS-XE": "show running-config",
+    "Nokia SR Linux": "info from running /",
 }
-
 
 def fail(message):
     print(f"ERROR: {message}", file=sys.stderr)
@@ -63,62 +59,39 @@ def load_inventory():
         fail(f"Invalid inventory JSON: {exc}")
 
 
-def get_credentials(settings):
-    username_env = settings["username_env"]
-    password_env = settings["password_env"]
-
-    username = os.environ.get(username_env)
-    password = os.environ.get(password_env)
-
-    if not username:
-        fail(f"Required environment variable {username_env} is not set.")
-
-    if not password:
-        fail(f"Required environment variable {password_env} is not set.")
-
-    return username, password
-
-
 def collect_device(device):
     platform = device["platform"]
-    settings = PLATFORM_SETTINGS.get(platform)
 
-    if not settings:
-        raise ValueError(f"Unsupported platform: {platform!r}")
+    get_platform_settings(platform)
 
-    username, password = get_credentials(settings)
-    management_ip = str(
-        ipaddress.ip_interface(device["management_ip"]).ip
+    command = COLLECTION_COMMANDS.get(
+        platform
     )
-    connection_args = {
-        "device_type": settings["device_type"],
-        "host": management_ip,
-        "username": username,
-        "password": password,
-    }
 
-    if settings["enable"]:
-        connection_args["secret"] = password
+    if not command:
+        raise ValueError(
+            f"Unsupported platform: "
+            f"{platform!r}"
+        )
 
-    connection = ConnectHandler(**connection_args)
+    connection = open_connection(device)
 
     try:
-        if settings["enable"] and not connection.check_enable_mode():
-            connection.enable()
-
         output = connection.send_command(
-            settings["command"],
+            command,
             read_timeout=60,
         )
 
         if not output.strip():
-            raise RuntimeError("Device returned an empty configuration.")
+            raise RuntimeError(
+                "Device returned an empty "
+                "configuration."
+            )
 
         return output.rstrip() + "\n"
 
     finally:
         connection.disconnect()
-
 
 def write_config(output_dir, hostname, config):
     output_dir.mkdir(parents=True, exist_ok=True)
