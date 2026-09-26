@@ -30,6 +30,39 @@ pipeline {
             }
         }
 
+        stage('GitHub Status Pending') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'github-status-token',
+                        variable: 'GITHUB_STATUS_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set -eu
+
+                        STATUS_SHA="$(git rev-parse HEAD)"
+
+                        set +x
+                        curl \
+                            --fail-with-body \
+                            --silent \
+                            --show-error \
+                            --request POST \
+                            --header "Accept: application/vnd.github+json" \
+                            --header "Authorization: Bearer $GITHUB_STATUS_TOKEN" \
+                            --header "X-GitHub-Api-Version: 2026-03-10" \
+                            "https://api.github.com/repos/dushyantkinha-cu/ana-network-automation/statuses/$STATUS_SHA" \
+                            --data '{"state":"pending","description":"Jenkins CI is running","context":"jenkins/ci"}' \
+                            >/dev/null
+                        set -x
+
+                        echo "PASS: GitHub status set to pending"
+                    '''
+                }
+            }
+        }
+
         stage('Python Environment') {
             steps {
                 sh '''
@@ -95,10 +128,66 @@ pipeline {
 
     post {
         success {
+            withCredentials([
+                string(
+                    credentialsId: 'github-status-token',
+                    variable: 'GITHUB_STATUS_TOKEN'
+                )
+            ]) {
+                sh '''
+                    set -eu
+
+                    STATUS_SHA="$(git rev-parse HEAD)"
+
+                    set +x
+                    curl \
+                        --fail-with-body \
+                        --silent \
+                        --show-error \
+                        --request POST \
+                        --header "Accept: application/vnd.github+json" \
+                        --header "Authorization: Bearer $GITHUB_STATUS_TOKEN" \
+                        --header "X-GitHub-Api-Version: 2026-03-10" \
+                        "https://api.github.com/repos/dushyantkinha-cu/ana-network-automation/statuses/$STATUS_SHA" \
+                        --data '{"state":"success","description":"Jenkins CI passed","context":"jenkins/ci"}' \
+                        >/dev/null
+                    set -x
+
+                    echo "PASS: GitHub status set to success"
+                '''
+            }
+
             echo 'CI RESULT: SUCCESS'
         }
 
         failure {
+            withCredentials([
+                string(
+                    credentialsId: 'github-status-token',
+                    variable: 'GITHUB_STATUS_TOKEN'
+                )
+            ]) {
+                sh '''
+                    STATUS_SHA="$(git rev-parse HEAD)"
+
+                    set +x
+                    curl \
+                        --fail-with-body \
+                        --silent \
+                        --show-error \
+                        --request POST \
+                        --header "Accept: application/vnd.github+json" \
+                        --header "Authorization: Bearer $GITHUB_STATUS_TOKEN" \
+                        --header "X-GitHub-Api-Version: 2026-03-10" \
+                        "https://api.github.com/repos/dushyantkinha-cu/ana-network-automation/statuses/$STATUS_SHA" \
+                        --data '{"state":"failure","description":"Jenkins CI failed","context":"jenkins/ci"}' \
+                        >/dev/null
+                    set -x
+
+                    echo "GitHub status set to failure"
+                '''
+            }
+
             echo 'CI RESULT: FAILURE'
         }
 
