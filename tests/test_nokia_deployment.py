@@ -1,11 +1,15 @@
 import pytest
 
 from automation.deployment.nokia import (
+    NokiaApplyError,
     NokiaPreviewError,
+    apply_commands,
+    apply_rendered_config,
     preview_commands,
     preview_rendered_config,
     rendered_config_to_commands,
     sanitize_diff,
+    validate_confirmed_timeout,
     validate_preview_commands,
 )
 
@@ -73,6 +77,7 @@ class FakeConnection:
     def send_command_timing(
         self,
         command,
+        **kwargs,
     ):
         self.timing_commands.append(
             command
@@ -228,6 +233,58 @@ interface ethernet-1/1 {
         "exit",
     ]
 
+def test_candidate_entry_synchronizes_stale_prompt():
+    class StalePromptConnection(FakeConnection):
+        def __init__(self):
+            super().__init__(
+                enter_output=(
+                    "\n--{ running }--[  ]--"
+                )
+            )
+            self.prompt_sync_calls = 0
+
+        def find_prompt(self):
+            self.prompt_sync_calls += 1
+
+            # Simulate draining a stale running-mode
+            # banner before candidate entry.
+            self.enter_output = None
+
+            return super().find_prompt()
+
+    connection = StalePromptConnection()
+
+    result = preview_commands(
+        NOKIA_DEVICE,
+        [
+            "interface ethernet-1/1",
+            "exit",
+        ],
+        connection_factory=(
+            lambda device: connection
+        ),
+        candidate_name="ANA-S4-SYNC-TEST",
+    )
+
+    assert connection.prompt_sync_calls >= 1
+
+    assert (
+        result.candidate_name
+        == "ANA-S4-SYNC-TEST"
+    )
+
+    assert result.validation_passed is True
+    assert result.discarded is True
+
+    assert (
+        connection.timing_commands[0]
+        == (
+            "enter candidate exclusive "
+            "name ANA-S4-SYNC-TEST"
+        )
+    )
+
+    assert connection.disconnected is True
 
 def test_translates_empty_list_object():
     rendered = """\
@@ -647,3 +704,552 @@ interface ethernet-1/1 {
         is True
     )
     assert result.discarded is True
+
+class FakeApplyConnection(FakeConnection):
+    def __init__(
+        self,
+        confirmed_output="",
+        accept_output="",
+        reject_output="",
+        save_output="",
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+        self.confirmed_output = (
+            confirmed_output
+        )
+        self.accept_output = accept_output
+        self.reject_output = reject_output
+        self.save_output = save_output
+
+        self.confirmed_started = False
+        self.accepted = False
+        self.rejected = False
+        self.saved = False
+
+    def send_command_timing(
+        self,
+        command,
+        **kwargs,
+    ):
+        if command.startswith(
+            "commit confirmed timeout "
+        ):
+            self.timing_commands.append(
+                command
+            )
+
+            if not self._has_error(
+                self.confirmed_output
+            ):
+                self.confirmed_started = True
+                self.mode = "running"
+                self.candidate_name = None
+
+            return self.confirmed_output
+
+        if command == (
+            "tools system configuration "
+            "confirmed-accept"
+        ):
+            self.timing_commands.append(
+                command
+            )
+
+            if not self._has_error(
+                self.accept_output
+            ):
+                self.confirmed_started = False
+                self.accepted = True
+
+            return self.accept_output
+
+        if command == (
+            "tools system configuration "
+            "confirmed-reject"
+        ):
+            self.timing_commands.append(
+                command
+            )
+
+            if not self._has_error(
+                self.reject_output
+            ):
+                self.confirmed_started = False
+                self.rejected = True
+                self.mode = "running"
+                self.candidate_name = None
+
+            return self.reject_output
+
+        if command == "save startup":
+            self.timing_commands.append(
+                command
+            )
+
+            if not self.accepted:
+                raise AssertionError(
+                    "save startup called before "
+                    "confirmed commit acceptance"
+                )
+
+            if not self._has_error(
+                self.save_output
+            ):
+                self.saved = True
+
+            return self.save_output
+
+        return super().send_command_timing(
+            command
+        )
+
+
+def test_apply_success_accepts_then_persists():
+    connection = FakeApplyConnection(
+        diff_output=(
+            "+ interface ethernet-1/1 {\n"
+            "+     description APPLY\n"
+            "+ }\n"
+        )
+    )
+
+    def post_validate():
+        assert (
+            connection.confirmed_started
+            is True
+        )
+        assert connection.accepted is False
+        assert connection.saved is False
+        return True
+
+    result = apply_commands(
+        NOKIA_DEVICE,
+        [
+            "interface ethernet-1/1",
+            "description APPLY",
+            "exit",
+        ],
+        post_validate=post_validate,
+        connection_factory=(
+            lambda device: connection
+        ),
+        candidate_name="ANA-S4-APPLY",
+    )
+
+    assert (
+        result.candidate_name
+        == "ANA-S4-APPLY"
+    )
+    assert result.command_count == 3
+    assert (
+        result.diff
+        == (
+            "+ interface ethernet-1/1 {\n"
+            "+     description APPLY\n"
+            "+ }"
+        )
+    )
+    assert result.validation_passed is True
+    assert result.accepted is True
+    assert result.persisted is True
+    assert result.rejected is False
+
+    assert connection.accepted is True
+    assert connection.saved is True
+
+    assert connection.timing_commands == [
+        (
+            "enter candidate exclusive "
+            "name ANA-S4-APPLY"
+        ),
+        "commit validate",
+        "commit confirmed timeout 120",
+        "tools system configuration confirmed-accept",
+        "save startup",
+    ]
+
+    assert connection.commands == [
+        "diff /",
+    ]
+
+    assert connection.disconnected is True
+
+
+def test_apply_validation_failure_rejects():
+    connection = FakeApplyConnection()
+
+    result = apply_commands(
+        NOKIA_DEVICE,
+        ["system information location TEST"],
+        post_validate=lambda: False,
+        connection_factory=(
+            lambda device: connection
+        ),
+        candidate_name="ANA-S4-FAIL",
+    )
+
+    assert result.validation_passed is False
+    assert result.accepted is False
+    assert result.persisted is False
+    assert result.rejected is True
+
+    assert connection.rejected is True
+
+    assert (
+        "tools system configuration confirmed-reject"
+        in connection.timing_commands
+    )
+
+    assert (
+        "tools system configuration confirmed-accept"
+        not in connection.timing_commands
+    )
+
+    assert (
+        "save startup"
+        not in connection.timing_commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_validation_exception_rejects():
+    connection = FakeApplyConnection()
+
+    def post_validate():
+        raise RuntimeError(
+            "validation exploded"
+        )
+
+    with pytest.raises(
+        NokiaApplyError,
+        match="validation raised an exception",
+    ):
+        apply_commands(
+            NOKIA_DEVICE,
+            ["system information location TEST"],
+            post_validate=post_validate,
+            connection_factory=(
+                lambda device: connection
+            ),
+            candidate_name="ANA-S4-EXCEPTION",
+        )
+
+    assert connection.rejected is True
+
+    assert (
+        "tools system configuration confirmed-accept"
+        not in connection.timing_commands
+    )
+
+    assert (
+        "save startup"
+        not in connection.timing_commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_stage_failure_discards_candidate():
+    connection = FakeApplyConnection(
+        stage_output=(
+            "Error: invalid configuration"
+        )
+    )
+
+    with pytest.raises(
+        NokiaApplyError,
+        match="rejected",
+    ):
+        apply_commands(
+            NOKIA_DEVICE,
+            ["system information location BAD"],
+            post_validate=lambda: True,
+            connection_factory=(
+                lambda device: connection
+            ),
+            candidate_name="ANA-S4-STAGE-FAIL",
+        )
+
+    assert (
+        "discard now"
+        in connection.timing_commands
+    )
+
+    assert not any(
+        command.startswith(
+            "commit confirmed timeout "
+        )
+        for command in connection.timing_commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_candidate_validation_failure_discards():
+    connection = FakeApplyConnection(
+        validate_output=(
+            "Error: validation failed"
+        )
+    )
+
+    with pytest.raises(
+        NokiaApplyError,
+        match="rejected",
+    ):
+        apply_commands(
+            NOKIA_DEVICE,
+            ["system information location BAD"],
+            post_validate=lambda: True,
+            connection_factory=(
+                lambda device: connection
+            ),
+            candidate_name="ANA-S4-VALIDATE-FAIL",
+        )
+
+    assert (
+        "discard now"
+        in connection.timing_commands
+    )
+
+    assert not any(
+        command.startswith(
+            "commit confirmed timeout "
+        )
+        for command in connection.timing_commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_confirmed_start_failure_discards():
+    connection = FakeApplyConnection(
+        confirmed_output=(
+            "Error: confirmed commit failed"
+        )
+    )
+
+    with pytest.raises(
+        NokiaApplyError,
+        match="rejected",
+    ):
+        apply_commands(
+            NOKIA_DEVICE,
+            ["system information location TEST"],
+            post_validate=lambda: True,
+            connection_factory=(
+                lambda device: connection
+            ),
+            candidate_name="ANA-S4-CONFIRM-FAIL",
+        )
+
+    assert (
+        "commit confirmed timeout 120"
+        in connection.timing_commands
+    )
+
+    assert (
+        "discard now"
+        in connection.timing_commands
+    )
+
+    assert (
+        "tools system configuration confirmed-accept"
+        not in connection.timing_commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_accept_failure_attempts_reject():
+    connection = FakeApplyConnection(
+        accept_output=(
+            "Error: accept failed"
+        )
+    )
+
+    with pytest.raises(
+        NokiaApplyError,
+        match="rejected",
+    ):
+        apply_commands(
+            NOKIA_DEVICE,
+            ["system information location TEST"],
+            post_validate=lambda: True,
+            connection_factory=(
+                lambda device: connection
+            ),
+            candidate_name="ANA-S4-ACCEPT-FAIL",
+        )
+
+    assert (
+        "tools system configuration confirmed-accept"
+        in connection.timing_commands
+    )
+
+    assert (
+        "tools system configuration confirmed-reject"
+        in connection.timing_commands
+    )
+
+    assert connection.rejected is True
+    assert connection.saved is False
+    assert connection.disconnected is True
+
+
+def test_apply_persistence_failure_is_explicit():
+    connection = FakeApplyConnection(
+        save_output=(
+            "Error: startup save failed"
+        )
+    )
+
+    with pytest.raises(
+        NokiaApplyError,
+        match=(
+            "persistence to startup "
+            "configuration failed"
+        ),
+    ):
+        apply_commands(
+            NOKIA_DEVICE,
+            ["system information location TEST"],
+            post_validate=lambda: True,
+            connection_factory=(
+                lambda device: connection
+            ),
+            candidate_name="ANA-S4-SAVE-FAIL",
+        )
+
+    assert connection.accepted is True
+
+    assert (
+        "save startup"
+        in connection.timing_commands
+    )
+
+    assert (
+        "tools system configuration confirmed-reject"
+        not in connection.timing_commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_reject_failure_is_explicit():
+    connection = FakeApplyConnection(
+        reject_output=(
+            "Error: reject failed"
+        )
+    )
+
+    with pytest.raises(
+        NokiaApplyError,
+        match="rejection also failed",
+    ):
+        apply_commands(
+            NOKIA_DEVICE,
+            ["system information location TEST"],
+            post_validate=lambda: False,
+            connection_factory=(
+                lambda device: connection
+            ),
+            candidate_name="ANA-S4-REJECT-FAIL",
+        )
+
+    assert (
+        "tools system configuration confirmed-accept"
+        not in connection.timing_commands
+    )
+
+    assert (
+        "save startup"
+        not in connection.timing_commands
+    )
+
+    assert connection.disconnected is True
+
+
+@pytest.mark.parametrize(
+    "timeout",
+    [
+        0,
+        29,
+        3601,
+        "120",
+        True,
+    ],
+)
+def test_apply_rejects_unsafe_confirmed_timeout(
+    timeout,
+):
+    with pytest.raises(
+        NokiaApplyError,
+        match="Confirmed-commit timeout",
+    ):
+        validate_confirmed_timeout(
+            timeout
+        )
+
+
+def test_apply_rendered_config_translates_hierarchy():
+    connection = FakeApplyConnection()
+
+    rendered = """\
+interface ethernet-1/1 {
+    description APPLY
+}
+"""
+
+    result = apply_rendered_config(
+        NOKIA_DEVICE,
+        rendered,
+        post_validate=lambda: True,
+        connection_factory=(
+            lambda device: connection
+        ),
+        candidate_name="ANA-S4-RENDERED",
+    )
+
+    commands, _ = (
+        connection.config_set_calls[0]
+    )
+
+    assert commands == [
+        "interface ethernet-1/1",
+        "description APPLY",
+        "exit",
+    ]
+
+    assert result.command_count == 3
+    assert result.accepted is True
+    assert result.persisted is True
+
+
+def test_apply_wrong_platform_is_denied():
+    device = dict(NOKIA_DEVICE)
+    device["platform"] = "Cisco IOS-XE"
+
+    connection_called = False
+
+    def forbidden_connection(device):
+        nonlocal connection_called
+        connection_called = True
+        raise AssertionError
+
+    with pytest.raises(
+        NokiaApplyError,
+        match="requires platform",
+    ):
+        apply_commands(
+            device,
+            ["hostname BAD"],
+            post_validate=lambda: True,
+            connection_factory=(
+                forbidden_connection
+            ),
+        )
+
+    assert connection_called is False

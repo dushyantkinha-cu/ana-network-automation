@@ -283,8 +283,22 @@ def enter_candidate(
         f"{candidate_name}"
     )
 
+    # Synchronize the SR Linux CLI before the first
+    # candidate command. Netmiko can otherwise return
+    # a residual running-mode banner before the
+    # candidate-entry response arrives.
+    try:
+        connection.find_prompt()
+    except Exception as exc:
+        raise NokiaPreviewError(
+            "Unable to synchronize SR Linux CLI "
+            "before candidate entry."
+        ) from exc
+
     output = connection.send_command_timing(
-        command
+        command,
+        last_read=4.0,
+        read_timeout=20.0,
     )
 
     check_cli_output(
@@ -484,4 +498,403 @@ def preview_rendered_config(
         commands,
         connection_factory=connection_factory,
         candidate_name=candidate_name,
+    )
+
+class NokiaApplyError(RuntimeError):
+    """Raised when an SR Linux apply transaction fails."""
+
+
+@dataclass(frozen=True)
+class NokiaApplyResult:
+    candidate_name: str
+    command_count: int
+    diff: str
+    validation_passed: bool
+    accepted: bool
+    persisted: bool
+    rejected: bool
+
+
+CONFIRMED_TIMEOUT_SECONDS = 120
+CONFIRMED_TIMEOUT_MIN_SECONDS = 30
+CONFIRMED_TIMEOUT_MAX_SECONDS = 3600
+
+
+def validate_confirmed_timeout(timeout):
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, int)
+    ):
+        raise NokiaApplyError(
+            "Confirmed-commit timeout must be "
+            "an integer number of seconds."
+        )
+
+    if not (
+        CONFIRMED_TIMEOUT_MIN_SECONDS
+        <= timeout
+        <= CONFIRMED_TIMEOUT_MAX_SECONDS
+    ):
+        raise NokiaApplyError(
+            "Confirmed-commit timeout must be "
+            "between 30 and 3600 seconds."
+        )
+
+    return timeout
+
+
+def validate_apply_commands(commands):
+    try:
+        return validate_preview_commands(
+            commands
+        )
+    except NokiaPreviewError as exc:
+        raise NokiaApplyError(
+            str(exc)
+        ) from exc
+
+
+def check_apply_cli_output(
+    action,
+    output,
+):
+    try:
+        check_cli_output(
+            action,
+            output,
+        )
+    except NokiaPreviewError as exc:
+        raise NokiaApplyError(
+            str(exc)
+        ) from exc
+
+
+def start_confirmed_commit(
+    connection,
+    timeout,
+):
+    command = (
+        "commit confirmed timeout "
+        f"{timeout}"
+    )
+
+    output = connection.send_command_timing(
+        command
+    )
+
+    check_apply_cli_output(
+        "confirmed commit",
+        output,
+    )
+
+
+def accept_confirmed_commit(
+    connection,
+):
+    command = (
+        "tools system configuration "
+        "confirmed-accept"
+    )
+
+    output = connection.send_command_timing(
+        command
+    )
+
+    check_apply_cli_output(
+        "confirmed commit acceptance",
+        output,
+    )
+
+
+def reject_confirmed_commit(
+    connection,
+):
+    command = (
+        "tools system configuration "
+        "confirmed-reject"
+    )
+
+    output = connection.send_command_timing(
+        command
+    )
+
+    check_apply_cli_output(
+        "confirmed commit rejection",
+        output,
+    )
+
+
+def persist_startup(
+    connection,
+):
+    command = "save startup"
+
+    output = connection.send_command_timing(
+        command
+    )
+
+    check_apply_cli_output(
+        "startup persistence",
+        output,
+    )
+
+
+def apply_commands(
+    device,
+    commands,
+    post_validate,
+    connection_factory=None,
+    candidate_name=None,
+    confirmed_timeout=(
+        CONFIRMED_TIMEOUT_SECONDS
+    ),
+):
+    if (
+        device.get("platform")
+        != "Nokia SR Linux"
+    ):
+        raise NokiaApplyError(
+            "Nokia apply adapter requires "
+            "platform 'Nokia SR Linux'."
+        )
+
+    if not callable(post_validate):
+        raise NokiaApplyError(
+            "post_validate must be callable."
+        )
+
+    commands = validate_apply_commands(
+        commands
+    )
+
+    confirmed_timeout = (
+        validate_confirmed_timeout(
+            confirmed_timeout
+        )
+    )
+
+    if candidate_name is None:
+        candidate_name = make_candidate_name(
+            device
+        )
+
+    try:
+        candidate_name = validate_candidate_name(
+            candidate_name
+        )
+    except NokiaPreviewError as exc:
+        raise NokiaApplyError(
+            str(exc)
+        ) from exc
+
+    if connection_factory is None:
+        connection_factory = open_connection
+
+    connection = connection_factory(device)
+
+    candidate_open = False
+    confirmed_started = False
+    transaction_finished = False
+    recovery_attempted = False
+
+    try:
+        try:
+            enter_candidate(
+                connection,
+                candidate_name,
+            )
+        except NokiaPreviewError as exc:
+            raise NokiaApplyError(
+                str(exc)
+            ) from exc
+
+        candidate_open = True
+
+        stage_output = connection.send_config_set(
+            commands,
+            enter_config_mode=False,
+            exit_config_mode=False,
+            cmd_verify=True,
+        )
+
+        check_apply_cli_output(
+            "configuration staging",
+            stage_output,
+        )
+
+        try:
+            validate_candidate(
+                connection
+            )
+        except NokiaPreviewError as exc:
+            raise NokiaApplyError(
+                str(exc)
+            ) from exc
+
+        diff = collect_candidate_diff(
+            connection
+        )
+
+        start_confirmed_commit(
+            connection,
+            confirmed_timeout,
+        )
+
+        confirmed_started = True
+        candidate_open = False
+
+        try:
+            validation_passed = post_validate()
+        except Exception as exc:
+            raise NokiaApplyError(
+                "Post-deployment validation "
+                "raised an exception."
+            ) from exc
+
+        if not isinstance(
+            validation_passed,
+            bool,
+        ):
+            raise NokiaApplyError(
+                "Post-deployment validation "
+                "must return True or False."
+            )
+
+        if not validation_passed:
+            recovery_attempted = True
+
+            try:
+                reject_confirmed_commit(
+                    connection
+                )
+            except Exception as exc:
+                raise NokiaApplyError(
+                    "Post-deployment validation "
+                    "failed and confirmed commit "
+                    "rejection also failed. The "
+                    "confirmation timer may still "
+                    "be active."
+                ) from exc
+
+            confirmed_started = False
+            transaction_finished = True
+
+            return NokiaApplyResult(
+                candidate_name=candidate_name,
+                command_count=len(commands),
+                diff=diff,
+                validation_passed=False,
+                accepted=False,
+                persisted=False,
+                rejected=True,
+            )
+
+        accept_confirmed_commit(
+            connection
+        )
+
+        confirmed_started = False
+        transaction_finished = True
+
+        try:
+            persist_startup(
+                connection
+            )
+        except Exception as exc:
+            raise NokiaApplyError(
+                "Running configuration was "
+                "accepted, but persistence to "
+                "startup configuration failed. "
+                "Manual recovery is required."
+            ) from exc
+
+        return NokiaApplyResult(
+            candidate_name=candidate_name,
+            command_count=len(commands),
+            diff=diff,
+            validation_passed=True,
+            accepted=True,
+            persisted=True,
+            rejected=False,
+        )
+
+    except Exception as exc:
+        if (
+            not transaction_finished
+            and not recovery_attempted
+        ):
+            if confirmed_started:
+                try:
+                    reject_confirmed_commit(
+                        connection
+                    )
+                except Exception as rollback_exc:
+                    raise NokiaApplyError(
+                        "Nokia apply failed and "
+                        "automatic confirmed-commit "
+                        "rejection also failed. The "
+                        "confirmation timer may still "
+                        "be active."
+                    ) from rollback_exc
+
+            elif candidate_open:
+                try:
+                    discard_candidate(
+                        connection
+                    )
+                except Exception as cleanup_exc:
+                    raise NokiaApplyError(
+                        "Nokia apply failed and "
+                        "candidate cleanup also "
+                        "failed."
+                    ) from cleanup_exc
+
+        if isinstance(
+            exc,
+            NokiaApplyError,
+        ):
+            raise
+
+        if isinstance(
+            exc,
+            NokiaPreviewError,
+        ):
+            raise NokiaApplyError(
+                str(exc)
+            ) from exc
+
+        raise NokiaApplyError(
+            "Nokia apply transaction failed."
+        ) from exc
+
+    finally:
+        connection.disconnect()
+
+
+def apply_rendered_config(
+    device,
+    rendered_config,
+    post_validate,
+    connection_factory=None,
+    candidate_name=None,
+    confirmed_timeout=(
+        CONFIRMED_TIMEOUT_SECONDS
+    ),
+):
+    try:
+        commands = rendered_config_to_commands(
+            rendered_config
+        )
+    except NokiaPreviewError as exc:
+        raise NokiaApplyError(
+            str(exc)
+        ) from exc
+
+    return apply_commands(
+        device,
+        commands,
+        post_validate=post_validate,
+        connection_factory=connection_factory,
+        candidate_name=candidate_name,
+        confirmed_timeout=confirmed_timeout,
     )
