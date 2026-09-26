@@ -1,0 +1,253 @@
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    parameters {
+        choice(
+            name: 'DEVICE',
+            choices: [
+                'R1',
+                'R2',
+                'R3',
+                'R4',
+                'S1',
+                'S2',
+                'S3',
+                'S4'
+            ],
+            description: 'Managed device to target. R5 is intentionally excluded.'
+        )
+
+        choice(
+            name: 'ACTION',
+            choices: [
+                'dry-run',
+                'preview',
+                'apply'
+            ],
+            description: 'Deployment action. Apply changes live configuration.'
+        )
+
+        string(
+            name: 'CONFIRM_DEVICE',
+            defaultValue: '',
+            trim: true,
+            description: 'Required only for apply. Must exactly match DEVICE.'
+        )
+    }
+
+    stages {
+        stage('Environment') {
+            steps {
+                sh '''
+                    set -eu
+
+                    echo "=== HOST ==="
+                    hostname
+
+                    echo
+                    echo "=== WORKSPACE ==="
+                    pwd
+
+                    echo
+                    echo "=== GIT HEAD ==="
+                    git log -1 --oneline
+
+                    echo
+                    echo "=== REQUEST ==="
+                    echo "Device: $DEVICE"
+                    echo "Action: $ACTION"
+                '''
+            }
+        }
+
+        stage('Safety Gates') {
+            steps {
+                script {
+                    def allowedDevices = [
+                        'R1',
+                        'R2',
+                        'R3',
+                        'R4',
+                        'S1',
+                        'S2',
+                        'S3',
+                        'S4'
+                    ]
+
+                    if (!allowedDevices.contains(params.DEVICE)) {
+                        error(
+                            "Denied device: ${params.DEVICE}"
+                        )
+                    }
+
+                    if (
+                        params.ACTION == 'apply' &&
+                        params.CONFIRM_DEVICE != params.DEVICE
+                    ) {
+                        error(
+                            'For apply, CONFIRM_DEVICE must exactly ' +
+                            'match DEVICE.'
+                        )
+                    }
+                }
+            }
+        }
+
+        stage('Python Environment') {
+            steps {
+                sh '''
+                    set -eu
+
+                    rm -rf .venv
+                    python3 -m venv .venv
+
+                    .venv/bin/python -m pip install \
+                        --upgrade pip
+
+                    .venv/bin/python -m pip install \
+                        -r webapp/requirements.txt
+                '''
+            }
+        }
+
+        stage('Manual Approval') {
+            when {
+                expression {
+                    params.ACTION == 'apply'
+                }
+            }
+
+            steps {
+                timeout(
+                    time: 5,
+                    unit: 'MINUTES'
+                ) {
+                    input(
+                        message:
+                            "Apply intended configuration to " +
+                            "${params.DEVICE}?",
+                        ok: 'Deploy'
+                    )
+                }
+            }
+        }
+
+        stage('Deployment') {
+            steps {
+                script {
+                    def credentialId
+
+                    if (
+                        params.DEVICE in [
+                            'R1',
+                            'R2',
+                            'S1',
+                            'S2',
+                            'S3'
+                        ]
+                    ) {
+                        credentialId = 'arista-device-credentials'
+                    } else if (
+                        params.DEVICE in [
+                            'R3',
+                            'R4'
+                        ]
+                    ) {
+                        credentialId = 'cisco-device-credentials'
+                    } else if (
+                        params.DEVICE == 'S4'
+                    ) {
+                        credentialId = 'nokia-device-credentials'
+                    } else {
+                        error(
+                            "No credential mapping for ${params.DEVICE}"
+                        )
+                    }
+
+                    withCredentials([
+                        string(
+                            credentialsId: 'netbox-url',
+                            variable: 'NETBOX_URL'
+                        ),
+                        string(
+                            credentialsId: 'netbox-token',
+                            variable: 'NETBOX_TOKEN'
+                        ),
+                        usernamePassword(
+                            credentialsId: credentialId,
+                            usernameVariable: 'DEVICE_USERNAME',
+                            passwordVariable: 'DEVICE_PASSWORD'
+                        )
+                    ]) {
+                        withEnv([
+                            "ARISTA_USERNAME=${env.DEVICE_USERNAME}",
+                            "ARISTA_PASSWORD=${env.DEVICE_PASSWORD}",
+                            "CISCO_USERNAME=${env.DEVICE_USERNAME}",
+                            "CISCO_PASSWORD=${env.DEVICE_PASSWORD}",
+                            "NOKIA_USERNAME=${env.DEVICE_USERNAME}",
+                            "NOKIA_PASSWORD=${env.DEVICE_PASSWORD}"
+                        ]) {
+                            sh '''
+                                set -eu
+
+                                case "$ACTION" in
+                                    dry-run)
+                                        .venv/bin/python \
+                                            automation/deploy_config.py \
+                                            --device "$DEVICE" \
+                                            --dry-run
+                                        ;;
+
+                                    preview)
+                                        .venv/bin/python \
+                                            automation/deploy_config.py \
+                                            --device "$DEVICE" \
+                                            --preview
+                                        ;;
+
+                                    apply)
+                                        .venv/bin/python \
+                                            automation/deploy_config.py \
+                                            --device "$DEVICE" \
+                                            --apply \
+                                            --confirm-device "$CONFIRM_DEVICE"
+                                        ;;
+
+                                    *)
+                                        echo \
+                                            "ERROR: Unsupported action: $ACTION"
+                                        exit 1
+                                        ;;
+                                esac
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'DEPLOYMENT PIPELINE RESULT: SUCCESS'
+        }
+
+        failure {
+            echo 'DEPLOYMENT PIPELINE RESULT: FAILURE'
+        }
+
+        aborted {
+            echo 'DEPLOYMENT PIPELINE RESULT: ABORTED'
+        }
+
+        always {
+            echo 'Deployment pipeline finished.'
+        }
+    }
+}
