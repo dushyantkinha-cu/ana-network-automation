@@ -1,3 +1,4 @@
+import json
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,19 +40,19 @@ BASE_DEVICE = {
             "Arista EOS",
             "distribution",
             "arista",
-        ),
+            ),
         (
             "R3",
             "Cisco IOS-XE",
             "edge",
             "cisco",
-        ),
+            ),
         (
             "S4",
             "Nokia SR Linux",
             "core",
             "nokia",
-        ),
+            ),
     ],
 )
 def test_supported_platform_adapter_mapping(
@@ -863,32 +864,115 @@ def test_confirm_device_rejected_outside_apply(
     assert inventory_called is False
 
 
-def test_apply_cannot_reach_live_adapter(
+def test_cli_apply_success_executes_transaction(
     monkeypatch,
     tmp_path,
+    capsys,
 ):
     device = deepcopy(BASE_DEVICE)
 
     rendered = tmp_path / "R3.cfg"
-
     rendered.write_text(
         "hostname R3\n",
         encoding="utf-8",
     )
 
-    adapter_called = False
+    observed = {}
 
-    def forbidden_adapter(
-        *args,
-        **kwargs,
+    monkeypatch.setattr(
+        deploy_cli,
+        "load_inventory",
+        lambda: {
+            "devices": [device],
+            "managed_device_count": 1,
+        },
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "render_device",
+        lambda hostname: rendered,
+    )
+
+    def fake_execute(
+        target,
+        apply_device,
+        rendered_path,
+        rendered_config,
     ):
-        nonlocal adapter_called
-        adapter_called = True
-
-        raise AssertionError(
-            "Stage 7F.1 apply mode must never "
-            "call a live adapter."
+        observed["target"] = target
+        observed["device"] = apply_device
+        observed["rendered_path"] = (
+            rendered_path
         )
+        observed["rendered_config"] = (
+            rendered_config
+        )
+
+        return (
+            {
+                "transaction_name": None,
+                "command_count": 1,
+                "sanitized_diff": None,
+                "validation_passed": True,
+                "committed": True,
+                "persisted": True,
+                "rolled_back": False,
+                "status": "success",
+                "error": None,
+            },
+            tmp_path / "deployment.json",
+        )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "execute_apply",
+        fake_execute,
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "deploy_config.py",
+            "--device",
+            "R3",
+            "--apply",
+            "--confirm-device",
+            "R3",
+        ],
+    )
+
+    deploy_cli.main()
+
+    assert observed["target"].hostname == "R3"
+    assert observed["device"] is device
+    assert observed["rendered_path"] == rendered
+
+    assert (
+        observed["rendered_config"]
+        == "hostname R3\n"
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Mode:                APPLY" in output
+    assert "Status:              SUCCESS" in output
+    assert "Committed:           True" in output
+    assert "Persisted:           True" in output
+
+
+def test_cli_apply_rollback_exits_failure(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    device = deepcopy(BASE_DEVICE)
+
+    rendered = tmp_path / "R3.cfg"
+    rendered.write_text(
+        "hostname R3\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.setattr(
         deploy_cli,
@@ -907,20 +991,21 @@ def test_apply_cannot_reach_live_adapter(
 
     monkeypatch.setattr(
         deploy_cli,
-        "preview_arista",
-        forbidden_adapter,
-    )
-
-    monkeypatch.setattr(
-        deploy_cli,
-        "preview_cisco",
-        forbidden_adapter,
-    )
-
-    monkeypatch.setattr(
-        deploy_cli,
-        "preview_nokia",
-        forbidden_adapter,
+        "execute_apply",
+        lambda *args, **kwargs: (
+            {
+                "transaction_name": None,
+                "command_count": 1,
+                "sanitized_diff": None,
+                "validation_passed": False,
+                "committed": False,
+                "persisted": False,
+                "rolled_back": True,
+                "status": "rolled_back",
+                "error": None,
+            },
+            tmp_path / "deployment.json",
+        ),
     )
 
     monkeypatch.setattr(
@@ -939,4 +1024,705 @@ def test_apply_cannot_reach_live_adapter(
         deploy_cli.main()
 
     assert exc.value.code == 1
-    assert adapter_called is False
+
+    output = capsys.readouterr().out
+
+    assert "Status:              ROLLED_BACK" in output
+    assert "Rolled back:         True" in output
+
+
+def test_cli_apply_adapter_failure_exits_failure(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    device = deepcopy(BASE_DEVICE)
+
+    rendered = tmp_path / "R3.cfg"
+    rendered.write_text(
+        "hostname R3\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "load_inventory",
+        lambda: {
+            "devices": [device],
+            "managed_device_count": 1,
+        },
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "render_device",
+        lambda hostname: rendered,
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "execute_apply",
+        lambda *args, **kwargs: (
+            {
+                "transaction_name": None,
+                "command_count": None,
+                "sanitized_diff": None,
+                "validation_passed": None,
+                "committed": None,
+                "persisted": None,
+                "rolled_back": None,
+                "status": "failed",
+                "error": "forced failure",
+            },
+            tmp_path / "deployment.json",
+        ),
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "deploy_config.py",
+            "--device",
+            "R3",
+            "--apply",
+            "--confirm-device",
+            "R3",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        deploy_cli.main()
+
+    assert exc.value.code == 1
+
+    output = capsys.readouterr().out
+
+    assert "Status:              FAILED" in output
+    assert "Error:               forced failure" in output
+
+@pytest.mark.parametrize(
+    (
+        "platform",
+        "profile",
+        "adapter",
+        "apply_attribute",
+    ),
+    [
+        (
+            "Arista EOS",
+            "distribution",
+            "arista",
+            "apply_arista",
+        ),
+        (
+            "Cisco IOS-XE",
+            "edge",
+            "cisco",
+            "apply_cisco",
+        ),
+        (
+            "Nokia SR Linux",
+            "core",
+            "nokia",
+            "apply_nokia",
+        ),
+    ],
+)
+def test_apply_dispatch_selects_vendor_adapter(
+    monkeypatch,
+    platform,
+    profile,
+    adapter,
+    apply_attribute,
+):
+    device = deepcopy(BASE_DEVICE)
+
+    device["platform"] = platform
+    device["config_profile"] = profile
+
+    target = validate_device_for_deployment(
+        device
+    )
+
+    observed = {}
+
+    def fake_apply(
+        apply_device,
+        rendered_config,
+        post_validate,
+    ):
+        observed["device"] = apply_device
+        observed["rendered_config"] = (
+            rendered_config
+        )
+        observed["post_validate"] = (
+            post_validate
+        )
+
+        return SimpleNamespace(
+            adapter=adapter
+        )
+
+    def forbidden_apply(
+        *args,
+        **kwargs,
+    ):
+        raise AssertionError(
+            "Wrong vendor apply adapter called."
+        )
+
+    for attribute in (
+        "apply_arista",
+        "apply_cisco",
+        "apply_nokia",
+    ):
+        monkeypatch.setattr(
+            deploy_cli,
+            attribute,
+            forbidden_apply,
+        )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        apply_attribute,
+        fake_apply,
+    )
+
+    post_validate = lambda: True
+
+    result = deploy_cli.dispatch_apply(
+        target,
+        device,
+        "hostname TEST\n",
+        post_validate,
+    )
+
+    assert result.adapter == adapter
+    assert observed["device"] is device
+
+    assert (
+        observed["rendered_config"]
+        == "hostname TEST\n"
+    )
+
+    assert (
+        observed["post_validate"]
+        is post_validate
+    )
+
+
+def test_post_validation_uses_existing_workflow(
+    monkeypatch,
+    capsys,
+):
+    observed = {}
+
+    def fake_run(
+        command,
+        **kwargs,
+    ):
+        observed["command"] = command
+        observed["kwargs"] = kwargs
+
+        return SimpleNamespace(
+            returncode=0,
+            stdout="Overall status: PASS\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        deploy_cli.subprocess,
+        "run",
+        fake_run,
+    )
+
+    result = deploy_cli.run_post_validation(
+        "R3"
+    )
+
+    assert result is True
+
+    assert observed["command"] == [
+        deploy_cli.sys.executable,
+        str(deploy_cli.VALIDATION_SCRIPT),
+        "--device",
+        "R3",
+        "--details",
+    ]
+
+    assert (
+        observed["kwargs"]["cwd"]
+        == deploy_cli.REPO_ROOT
+    )
+
+    assert (
+        observed["kwargs"]["capture_output"]
+        is True
+    )
+
+    assert (
+        observed["kwargs"]["text"]
+        is True
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Overall status: PASS" in output
+
+@pytest.mark.parametrize(
+    (
+        "adapter",
+        "result",
+        "expected_transaction",
+        "expected_committed",
+        "expected_rolled_back",
+        "expected_status",
+    ),
+    [
+        (
+            "arista",
+            SimpleNamespace(
+                session_name="ANA-R1-TEST",
+                command_count=10,
+                diff="sanitized arista diff",
+                validation_passed=True,
+                confirmed=True,
+                persisted=True,
+                rolled_back=False,
+            ),
+            "ANA-R1-TEST",
+            True,
+            False,
+            "success",
+        ),
+        (
+            "cisco",
+            SimpleNamespace(
+                command_count=20,
+                validation_passed=True,
+                confirmed=True,
+                persisted=True,
+                rolled_back=False,
+            ),
+            None,
+            True,
+            False,
+            "success",
+        ),
+        (
+            "nokia",
+            SimpleNamespace(
+                candidate_name="ANA-S4-TEST",
+                command_count=30,
+                diff="sanitized nokia diff",
+                validation_passed=True,
+                accepted=True,
+                persisted=True,
+                rejected=False,
+            ),
+            "ANA-S4-TEST",
+            True,
+            False,
+            "success",
+        ),
+    ],
+)
+def test_normalize_successful_apply_result(
+    adapter,
+    result,
+    expected_transaction,
+    expected_committed,
+    expected_rolled_back,
+    expected_status,
+):
+    target = SimpleNamespace(
+        hostname="TEST",
+        adapter=adapter,
+    )
+
+    normalized = (
+        deploy_cli.normalize_apply_result(
+            target,
+            result,
+        )
+    )
+
+    assert (
+        normalized["transaction_name"]
+        == expected_transaction
+    )
+    assert (
+        normalized["committed"]
+        is expected_committed
+    )
+    assert (
+        normalized["persisted"]
+        is True
+    )
+    assert (
+        normalized["rolled_back"]
+        is expected_rolled_back
+    )
+    assert (
+        normalized["status"]
+        == expected_status
+    )
+
+
+@pytest.mark.parametrize(
+    (
+        "adapter",
+        "result",
+    ),
+    [
+        (
+            "arista",
+            SimpleNamespace(
+                session_name="ANA-R1-TEST",
+                command_count=10,
+                diff="",
+                validation_passed=False,
+                confirmed=False,
+                persisted=False,
+                rolled_back=True,
+            ),
+        ),
+        (
+            "cisco",
+            SimpleNamespace(
+                command_count=20,
+                validation_passed=False,
+                confirmed=False,
+                persisted=False,
+                rolled_back=True,
+            ),
+        ),
+        (
+            "nokia",
+            SimpleNamespace(
+                candidate_name="ANA-S4-TEST",
+                command_count=30,
+                diff="",
+                validation_passed=False,
+                accepted=False,
+                persisted=False,
+                rejected=True,
+            ),
+        ),
+    ],
+)
+def test_normalize_rollback_result(
+    adapter,
+    result,
+):
+    target = SimpleNamespace(
+        hostname="TEST",
+        adapter=adapter,
+    )
+
+    normalized = (
+        deploy_cli.normalize_apply_result(
+            target,
+            result,
+        )
+    )
+
+    assert normalized["status"] == "rolled_back"
+    assert normalized["validation_passed"] is False
+    assert normalized["committed"] is False
+    assert normalized["persisted"] is False
+    assert normalized["rolled_back"] is True
+
+
+def test_write_deployment_report(
+    monkeypatch,
+    tmp_path,
+):
+    report_dir = (
+        tmp_path
+        / "deployment-reports"
+    )
+
+    rendered = tmp_path / "R3.cfg"
+    rendered.write_text(
+        "hostname R3\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "DEPLOYMENT_REPORT_DIR",
+        report_dir,
+    )
+
+    target = SimpleNamespace(
+        hostname="R3",
+        device_id=7,
+        status="active",
+        platform="Cisco IOS-XE",
+        config_profile="edge",
+        adapter="cisco",
+        management_ip="172.20.20.9/24",
+    )
+
+    normalized = {
+        "transaction_name": None,
+        "command_count": 1,
+        "sanitized_diff": None,
+        "validation_passed": True,
+        "committed": True,
+        "persisted": True,
+        "rolled_back": False,
+        "status": "success",
+    }
+
+    report_path = (
+        deploy_cli.write_deployment_report(
+            target,
+            rendered,
+            normalized,
+        )
+    )
+
+    assert report_path.is_file()
+
+    payload = json.loads(
+        report_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert payload["mode"] == "apply"
+    assert payload["safety_gates"] == "pass"
+
+    assert (
+        payload["device"]["hostname"]
+        == "R3"
+    )
+
+    assert (
+        payload["result"]["status"]
+        == "success"
+    )
+
+    assert (
+        payload["overall_status"]
+        == "success"
+    )
+
+    assert (
+        payload["rendered_config"]["sha256"]
+        == deploy_cli.sha256_file(rendered)
+    )
+
+    assert (
+        report_dir.stat().st_mode & 0o777
+        == 0o700
+    )
+
+    assert (
+        report_path.stat().st_mode & 0o777
+        == 0o600
+    )
+
+
+def test_execute_apply_success_writes_report(
+    monkeypatch,
+    tmp_path,
+):
+    device = deepcopy(BASE_DEVICE)
+
+    target = validate_device_for_deployment(
+        device
+    )
+
+    rendered = tmp_path / "R3.cfg"
+    rendered.write_text(
+        "hostname R3\n",
+        encoding="utf-8",
+    )
+
+    report_dir = (
+        tmp_path / "deployment-reports"
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "DEPLOYMENT_REPORT_DIR",
+        report_dir,
+    )
+
+    validation_calls = []
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "run_post_validation",
+        lambda hostname: (
+            validation_calls.append(hostname)
+            or True
+        ),
+    )
+
+    def fake_dispatch(
+        apply_target,
+        apply_device,
+        rendered_config,
+        post_validate,
+    ):
+        assert apply_target is target
+        assert apply_device is device
+        assert rendered_config == "hostname R3\n"
+        assert post_validate() is True
+
+        return SimpleNamespace(
+            command_count=1,
+            validation_passed=True,
+            confirmed=True,
+            persisted=True,
+            rolled_back=False,
+        )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "dispatch_apply",
+        fake_dispatch,
+    )
+
+    normalized, report_path = (
+        deploy_cli.execute_apply(
+            target,
+            device,
+            rendered,
+            "hostname R3\n",
+        )
+    )
+
+    assert validation_calls == ["R3"]
+    assert normalized["status"] == "success"
+    assert normalized["error"] is None
+    assert report_path.is_file()
+
+
+def test_execute_apply_rollback_writes_report(
+    monkeypatch,
+    tmp_path,
+):
+    device = deepcopy(BASE_DEVICE)
+
+    target = validate_device_for_deployment(
+        device
+    )
+
+    rendered = tmp_path / "R3.cfg"
+    rendered.write_text(
+        "hostname R3\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "DEPLOYMENT_REPORT_DIR",
+        tmp_path / "deployment-reports",
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "dispatch_apply",
+        lambda *args, **kwargs: SimpleNamespace(
+            command_count=1,
+            validation_passed=False,
+            confirmed=False,
+            persisted=False,
+            rolled_back=True,
+        ),
+    )
+
+    normalized, report_path = (
+        deploy_cli.execute_apply(
+            target,
+            device,
+            rendered,
+            "hostname R3\n",
+        )
+    )
+
+    assert normalized["status"] == "rolled_back"
+    assert normalized["rolled_back"] is True
+    assert report_path.is_file()
+
+    payload = json.loads(
+        report_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert (
+        payload["overall_status"]
+        == "rolled_back"
+    )
+
+
+def test_execute_apply_error_writes_failed_report(
+    monkeypatch,
+    tmp_path,
+):
+    device = deepcopy(BASE_DEVICE)
+
+    target = validate_device_for_deployment(
+        device
+    )
+
+    rendered = tmp_path / "R3.cfg"
+    rendered.write_text(
+        "hostname R3\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "DEPLOYMENT_REPORT_DIR",
+        tmp_path / "deployment-reports",
+    )
+
+    def failed_dispatch(
+        *args,
+        **kwargs,
+    ):
+        raise deploy_cli.CiscoApplyError(
+            "forced adapter failure"
+        )
+
+    monkeypatch.setattr(
+        deploy_cli,
+        "dispatch_apply",
+        failed_dispatch,
+    )
+
+    normalized, report_path = (
+        deploy_cli.execute_apply(
+            target,
+            device,
+            rendered,
+            "hostname R3\n",
+        )
+    )
+
+    assert normalized["status"] == "failed"
+
+    assert (
+        normalized["error"]
+        == "forced adapter failure"
+    )
+
+    payload = json.loads(
+        report_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert payload["overall_status"] == "failed"
+
+    assert (
+        payload["result"]["error"]
+        == "forced adapter failure"
+    )
