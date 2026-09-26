@@ -185,48 +185,60 @@ pipeline {
                             passwordVariable: 'DEVICE_PASSWORD'
                         )
                     ]) {
-                        withEnv([
-                            "ARISTA_USERNAME=${env.DEVICE_USERNAME}",
-                            "ARISTA_PASSWORD=${env.DEVICE_PASSWORD}",
-                            "CISCO_USERNAME=${env.DEVICE_USERNAME}",
-                            "CISCO_PASSWORD=${env.DEVICE_PASSWORD}",
-                            "NOKIA_USERNAME=${env.DEVICE_USERNAME}",
-                            "NOKIA_PASSWORD=${env.DEVICE_PASSWORD}"
-                        ]) {
-                            sh '''
-                                set -eu
+                        sh '''
+                            set -eu
 
-                                case "$ACTION" in
-                                    dry-run)
-                                        .venv/bin/python \
-                                            automation/deploy_config.py \
-                                            --device "$DEVICE" \
-                                            --dry-run
-                                        ;;
+                            case "$DEVICE" in
+                                R1|R2|S1|S2|S3)
+                                    export ARISTA_USERNAME="$DEVICE_USERNAME"
+                                    export ARISTA_PASSWORD="$DEVICE_PASSWORD"
+                                    ;;
 
-                                    preview)
-                                        .venv/bin/python \
-                                            automation/deploy_config.py \
-                                            --device "$DEVICE" \
-                                            --preview
-                                        ;;
+                                R3|R4)
+                                    export CISCO_USERNAME="$DEVICE_USERNAME"
+                                    export CISCO_PASSWORD="$DEVICE_PASSWORD"
+                                    ;;
 
-                                    apply)
-                                        .venv/bin/python \
-                                            automation/deploy_config.py \
-                                            --device "$DEVICE" \
-                                            --apply \
-                                            --confirm-device "$CONFIRM_DEVICE"
-                                        ;;
+                                S4)
+                                    export NOKIA_USERNAME="$DEVICE_USERNAME"
+                                    export NOKIA_PASSWORD="$DEVICE_PASSWORD"
+                                    ;;
 
-                                    *)
-                                        echo \
-                                            "ERROR: Unsupported action: $ACTION"
-                                        exit 1
-                                        ;;
-                                esac
-                            '''
-                        }
+                                *)
+                                    echo "ERROR: No credential mapping for $DEVICE"
+                                    exit 1
+                                    ;;
+                            esac
+
+                            case "$ACTION" in
+                                dry-run)
+                                    .venv/bin/python \
+                                        automation/deploy_config.py \
+                                        --device "$DEVICE" \
+                                        --dry-run
+                                    ;;
+
+                                preview)
+                                    .venv/bin/python \
+                                        automation/deploy_config.py \
+                                        --device "$DEVICE" \
+                                        --preview
+                                    ;;
+
+                                apply)
+                                    .venv/bin/python \
+                                        automation/deploy_config.py \
+                                        --device "$DEVICE" \
+                                        --apply \
+                                        --confirm-device "$CONFIRM_DEVICE"
+                                    ;;
+
+                                *)
+                                    echo "ERROR: Unsupported action: $ACTION"
+                                    exit 1
+                                    ;;
+                            esac
+                        '''
                     }
                 }
             }
