@@ -32,6 +32,7 @@ Hosts the Network Management and Automation System, including:
 
 - Automation framework
 - Network Source of Truth
+- Jenkins CI/CD
 - Telegraf
 - InfluxDB
 - Grafana
@@ -81,6 +82,22 @@ automation framework.
 - `docs/` - Project documentation
 - `scripts/` - Maintenance and helper scripts
 - `tests/` - Automation and template tests
+- `Jenkinsfile` - Jenkins Continuous Integration pipeline
+- `Jenkinsfile.deploy` - Guarded Jenkins deployment pipeline
+
+## CI/CD
+
+Jenkins provides the repository's CI/CD workflow from Ubuntu VM2.
+
+The CI pipeline runs syntax checks and the automated regression suite,
+then reports commit status to GitHub.
+
+The deployment pipeline supports guarded dry-run, preview, and apply
+operations for managed devices. Live apply requires exact device
+confirmation and a separate Jenkins human approval.
+
+See [`docs/jenkins-cicd.md`](docs/jenkins-cicd.md) for the complete
+implementation, safety model, operational workflow, and Stage 7G proof.
 
 ## Security
 

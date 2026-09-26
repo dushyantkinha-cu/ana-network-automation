@@ -45,14 +45,15 @@ Ubuntu VM2 hosts the Network Management and Automation System (NMAS).
 Current services include:
 
 - Git-based automation repository
+- NetBox Network Source of Truth and IPAM
+- Python configuration automation framework
+- FastAPI web interface
+- Jenkins CI/CD
 - Telegraf
 - gNMIc
 - InfluxDB
 - Grafana
 - Network telemetry normalization
-- Future NSOT/IPAM services
-- Future configuration automation services
-- Future web interface
 
 VM2 has management connectivity to the network devices.
 
@@ -260,6 +261,18 @@ Administrative and maintenance scripts.
 ### tests/
 
 Validation and automated testing.
+
+### Jenkinsfile
+
+Version-controlled Jenkins Continuous Integration pipeline definition.
+
+### Jenkinsfile.deploy
+
+Version-controlled guarded Jenkins deployment pipeline definition.
+
+The Jenkins architecture, credential model, deployment guardrails,
+multi-vendor preview proof, and live CI/CD validation are documented in
+[`docs/jenkins-cicd.md`](jenkins-cicd.md).
 
 ---
 
