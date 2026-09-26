@@ -1,7 +1,10 @@
 import pytest
 
 from automation.deployment.cisco import (
+    CiscoApplyError,
     CiscoPreviewError,
+    apply_commands,
+    apply_rendered_config,
     check_preview_prerequisites,
     extract_archive_path,
     normalize_running_config,
@@ -856,3 +859,354 @@ end
     assert result.command_count == 3
     assert result.rollback_completed is True
     assert result.config_restored is True
+
+
+class FakeApplyConnection(FakePreviewConnection):
+    def __init__(
+        self,
+        confirm_output="",
+        post_confirm_state=(
+            "%No Rollback Confirmed "
+            "Change pending"
+        ),
+        save_output=(
+            "Building configuration...\n"
+            "[OK]\n"
+        ),
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+        self.confirm_output = confirm_output
+        self.post_confirm_state = (
+            post_confirm_state
+        )
+        self.save_output = save_output
+
+        self.confirmed = False
+        self.save_calls = []
+
+    def send_command_timing(
+        self,
+        command,
+    ):
+        if command == "configure confirm":
+            self.timing_commands.append(command)
+
+            if "% invalid input" not in (
+                self.confirm_output.lower()
+            ):
+                self.confirmed = True
+
+            return self.confirm_output
+
+        return super().send_command_timing(
+            command
+        )
+
+    def send_command(
+        self,
+        command,
+        **kwargs,
+    ):
+        if (
+            command
+            == "show archive config rollback timer"
+            and self.confirmed
+        ):
+            self.commands.append(command)
+            return self.post_confirm_state
+
+        return super().send_command(
+            command,
+            **kwargs,
+        )
+
+    def save_config(
+        self,
+        *args,
+        **kwargs,
+    ):
+        if not self.confirmed:
+            raise AssertionError(
+                "save_config called before "
+                "configure confirm"
+            )
+
+        self.save_calls.append(
+            (args, kwargs)
+        )
+
+        return self.save_output
+
+
+def test_apply_success_confirms_then_persists():
+    connection = FakeApplyConnection()
+
+    def post_validate():
+        assert connection.confirmed is False
+        assert connection.save_calls == []
+        return True
+
+    result = apply_commands(
+        CISCO_DEVICE,
+        [
+            "interface GigabitEthernet2",
+            "description STAGE7F",
+            "exit",
+        ],
+        post_validate=post_validate,
+        connection_factory=lambda device: connection,
+    )
+
+    assert result.command_count == 3
+    assert result.validation_passed is True
+    assert result.confirmed is True
+    assert result.persisted is True
+    assert result.rolled_back is False
+
+    assert connection.confirmed is True
+    assert len(connection.save_calls) == 1
+
+    assert connection.timing_commands == [
+        "configure terminal revert timer 5",
+        "configure confirm",
+    ]
+
+    assert (
+        "configure revert now"
+        not in connection.timing_commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_validation_failure_reverts():
+    connection = FakeApplyConnection()
+
+    result = apply_commands(
+        CISCO_DEVICE,
+        ["hostname R3"],
+        post_validate=lambda: False,
+        connection_factory=lambda device: connection,
+    )
+
+    assert result.validation_passed is False
+    assert result.confirmed is False
+    assert result.persisted is False
+    assert result.rolled_back is True
+
+    assert (
+        "configure revert now"
+        in connection.timing_commands
+    )
+
+    assert (
+        "configure confirm"
+        not in connection.timing_commands
+    )
+
+    assert connection.save_calls == []
+    assert connection.disconnected is True
+
+
+def test_apply_validation_exception_reverts():
+    connection = FakeApplyConnection()
+
+    def post_validate():
+        raise RuntimeError(
+            "validation exploded"
+        )
+
+    with pytest.raises(
+        CiscoApplyError,
+        match="validation raised an exception",
+    ):
+        apply_commands(
+            CISCO_DEVICE,
+            ["hostname R3"],
+            post_validate=post_validate,
+            connection_factory=lambda device: connection,
+        )
+
+    assert (
+        "configure revert now"
+        in connection.timing_commands
+    )
+
+    assert (
+        "configure confirm"
+        not in connection.timing_commands
+    )
+
+    assert connection.save_calls == []
+    assert connection.disconnected is True
+
+
+def test_apply_stage_failure_reverts():
+    connection = FakeApplyConnection(
+        stage_output="% Invalid input"
+    )
+
+    with pytest.raises(
+        CiscoApplyError,
+        match="rejected",
+    ):
+        apply_commands(
+            CISCO_DEVICE,
+            ["hostname BAD"],
+            post_validate=lambda: True,
+            connection_factory=lambda device: connection,
+        )
+
+    assert (
+        "configure revert now"
+        in connection.timing_commands
+    )
+
+    assert (
+        "configure confirm"
+        not in connection.timing_commands
+    )
+
+    assert connection.save_calls == []
+    assert connection.disconnected is True
+
+
+def test_apply_confirm_failure_attempts_rollback():
+    connection = FakeApplyConnection(
+        confirm_output="% Invalid input"
+    )
+
+    with pytest.raises(
+        CiscoApplyError,
+        match="rejected",
+    ):
+        apply_commands(
+            CISCO_DEVICE,
+            ["hostname R3"],
+            post_validate=lambda: True,
+            connection_factory=lambda device: connection,
+        )
+
+    assert (
+        "configure confirm"
+        in connection.timing_commands
+    )
+
+    assert (
+        "configure revert now"
+        in connection.timing_commands
+    )
+
+    assert connection.save_calls == []
+    assert connection.disconnected is True
+
+
+def test_apply_persistence_failure_is_explicit():
+    connection = FakeApplyConnection(
+        save_output="% Error writing NVRAM"
+    )
+
+    with pytest.raises(
+        CiscoApplyError,
+        match="persistence to startup-config failed",
+    ):
+        apply_commands(
+            CISCO_DEVICE,
+            ["hostname R3"],
+            post_validate=lambda: True,
+            connection_factory=lambda device: connection,
+        )
+
+    assert connection.confirmed is True
+    assert len(connection.save_calls) == 1
+
+    assert (
+        "configure revert now"
+        not in connection.timing_commands
+    )
+
+    assert connection.disconnected is True
+
+
+def test_apply_rollback_failure_is_explicit():
+    connection = FakeApplyConnection(
+        revert_output="% Invalid input"
+    )
+
+    with pytest.raises(
+        CiscoApplyError,
+        match="automatic rollback attempt also failed",
+    ):
+        apply_commands(
+            CISCO_DEVICE,
+            ["hostname R3"],
+            post_validate=lambda: False,
+            connection_factory=lambda device: connection,
+        )
+
+    assert (
+        "configure confirm"
+        not in connection.timing_commands
+    )
+
+    assert connection.save_calls == []
+    assert connection.disconnected is True
+
+
+def test_apply_rendered_config_translates_hierarchy():
+    connection = FakeApplyConnection()
+
+    rendered = """\
+interface GigabitEthernet2
+ description STAGE7F
+!
+end
+"""
+
+    result = apply_rendered_config(
+        CISCO_DEVICE,
+        rendered,
+        post_validate=lambda: True,
+        connection_factory=lambda device: connection,
+    )
+
+    commands, _ = (
+        connection.config_set_calls[0]
+    )
+
+    assert commands == [
+        "interface GigabitEthernet2",
+        "description STAGE7F",
+        "exit",
+    ]
+
+    assert result.command_count == 3
+    assert result.confirmed is True
+    assert result.persisted is True
+
+
+def test_apply_wrong_platform_is_denied():
+    device = dict(CISCO_DEVICE)
+    device["platform"] = "Arista EOS"
+
+    connection_called = False
+
+    def forbidden_connection(device):
+        nonlocal connection_called
+        connection_called = True
+        raise AssertionError
+
+    with pytest.raises(
+        CiscoApplyError,
+        match="requires platform",
+    ):
+        apply_commands(
+            device,
+            ["hostname R1"],
+            post_validate=lambda: True,
+            connection_factory=forbidden_connection,
+        )
+
+    assert connection_called is False

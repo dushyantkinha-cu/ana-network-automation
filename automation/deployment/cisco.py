@@ -538,3 +538,277 @@ def preview_rendered_config(
         commands,
         connection_factory=connection_factory,
     )
+
+
+class CiscoApplyError(RuntimeError):
+    """Raised when a Cisco apply transaction fails."""
+
+
+@dataclass(frozen=True)
+class CiscoApplyResult:
+    command_count: int
+    validation_passed: bool
+    confirmed: bool
+    persisted: bool
+    rolled_back: bool
+
+
+def validate_apply_commands(commands):
+    try:
+        return validate_preview_commands(commands)
+    except CiscoPreviewError as exc:
+        raise CiscoApplyError(
+            str(exc)
+        ) from exc
+
+
+def check_apply_cli_output(
+    operation,
+    output,
+):
+    try:
+        check_cli_output(
+            operation,
+            output,
+        )
+    except CiscoPreviewError as exc:
+        raise CiscoApplyError(
+            str(exc)
+        ) from exc
+
+
+def check_apply_prerequisites_on_connection(
+    connection,
+):
+    try:
+        return check_prerequisites_on_connection(
+            connection
+        )
+    except CiscoPreviewError as exc:
+        raise CiscoApplyError(
+            str(exc)
+        ) from exc
+
+
+def revert_apply(connection):
+    try:
+        revert_preview(connection)
+    except CiscoPreviewError as exc:
+        raise CiscoApplyError(
+            str(exc)
+        ) from exc
+
+
+def confirm_apply(connection):
+    command = "configure confirm"
+
+    output = connection.send_command_timing(
+        command
+    )
+
+    check_apply_cli_output(
+        command,
+        output,
+    )
+
+    rollback_state = connection.send_command(
+        "show archive config rollback timer"
+    )
+
+    if (
+        NO_ROLLBACK_PENDING
+        not in rollback_state
+    ):
+        raise CiscoApplyError(
+            "Cisco apply confirmation did not "
+            "clear rollback protection."
+        )
+
+
+def apply_commands(
+    device,
+    commands,
+    post_validate,
+    connection_factory=None,
+):
+    if device.get("platform") != "Cisco IOS-XE":
+        raise CiscoApplyError(
+            "Cisco apply adapter requires "
+            "platform 'Cisco IOS-XE'."
+        )
+
+    if not callable(post_validate):
+        raise CiscoApplyError(
+            "post_validate must be callable."
+        )
+
+    commands = validate_apply_commands(
+        commands
+    )
+
+    if connection_factory is None:
+        connection_factory = open_connection
+
+    connection = connection_factory(device)
+
+    rollback_started = False
+    transaction_finished = False
+
+    try:
+        check_apply_prerequisites_on_connection(
+            connection
+        )
+
+        timer_command = (
+            "configure terminal revert timer "
+            f"{ROLLBACK_TIMER_MINUTES}"
+        )
+
+        timer_output = (
+            connection.send_command_timing(
+                timer_command
+            )
+        )
+
+        check_apply_cli_output(
+            timer_command,
+            timer_output,
+        )
+
+        rollback_started = True
+
+        stage_output = connection.send_config_set(
+            commands,
+            enter_config_mode=False,
+            exit_config_mode=True,
+            cmd_verify=True,
+        )
+
+        check_apply_cli_output(
+            "staged configuration",
+            stage_output,
+        )
+
+        rollback_state = connection.send_command(
+            "show archive config rollback timer"
+        )
+
+        if (
+            NO_ROLLBACK_PENDING
+            in rollback_state
+        ):
+            raise CiscoApplyError(
+                "Rollback protection was not "
+                "active after staging."
+            )
+
+        try:
+            validation_passed = post_validate()
+        except Exception as exc:
+            raise CiscoApplyError(
+                "Post-deployment validation "
+                "raised an exception."
+            ) from exc
+
+        if not isinstance(
+            validation_passed,
+            bool,
+        ):
+            raise CiscoApplyError(
+                "Post-deployment validation "
+                "must return True or False."
+            )
+
+        if not validation_passed:
+            revert_apply(connection)
+
+            transaction_finished = True
+
+            return CiscoApplyResult(
+                command_count=len(commands),
+                validation_passed=False,
+                confirmed=False,
+                persisted=False,
+                rolled_back=True,
+            )
+
+        confirm_apply(connection)
+
+        transaction_finished = True
+
+        try:
+            persist_output = (
+                connection.save_config()
+            )
+
+            check_apply_cli_output(
+                "persistence to startup-config",
+                persist_output,
+            )
+
+        except Exception as exc:
+            raise CiscoApplyError(
+                "Running configuration was "
+                "confirmed, but persistence to "
+                "startup-config failed. Manual "
+                "recovery is required."
+            ) from exc
+
+        return CiscoApplyResult(
+            command_count=len(commands),
+            validation_passed=True,
+            confirmed=True,
+            persisted=True,
+            rolled_back=False,
+        )
+
+    except Exception as exc:
+        if (
+            rollback_started
+            and not transaction_finished
+        ):
+            try:
+                revert_apply(connection)
+            except Exception as rollback_exc:
+                raise CiscoApplyError(
+                    "Cisco apply failed and the "
+                    "automatic rollback attempt "
+                    "also failed. The revert timer "
+                    "may still be active."
+                ) from rollback_exc
+
+        if isinstance(
+            exc,
+            CiscoApplyError,
+        ):
+            raise
+
+        raise CiscoApplyError(
+            "Cisco apply transaction failed."
+        ) from exc
+
+    finally:
+        connection.disconnect()
+
+
+def apply_rendered_config(
+    device,
+    rendered_config,
+    post_validate,
+    connection_factory=None,
+):
+    try:
+        commands = rendered_config_to_commands(
+            rendered_config
+        )
+    except CiscoPreviewError as exc:
+        raise CiscoApplyError(
+            str(exc)
+        ) from exc
+
+    return apply_commands(
+        device,
+        commands,
+        post_validate=post_validate,
+        connection_factory=connection_factory,
+    )
