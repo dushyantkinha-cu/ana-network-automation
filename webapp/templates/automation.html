@@ -832,9 +832,56 @@
         </span>
     </form>
 
-    <p class="action-note">
-        Apply is not enabled yet.
-    </p>
+    <div class="change-warning">
+        Apply changes the live device configuration.
+        Jenkins automatically runs a guarded Preview
+        first. The live Apply runs only if that Preview
+        succeeds.
+    </div>
+
+    <form
+        method="post"
+        action="/automation/deploy"
+        class="action-bar"
+    >
+        <input
+            type="hidden"
+            name="device"
+            value="{{ selected_device.hostname }}"
+        >
+
+        <input
+            type="hidden"
+            name="action"
+            value="apply"
+        >
+
+        <label for="confirm-device">
+            Type
+            <strong>{{ selected_device.hostname }}</strong>
+            to confirm:
+        </label>
+
+        <input
+            id="confirm-device"
+            type="text"
+            name="confirm_device"
+            autocomplete="off"
+            required
+        >
+
+        <button
+            type="submit"
+            class="button-primary"
+        >
+            Apply Configuration
+        </button>
+
+        <span class="action-note">
+            Safety gates → automatic Preview →
+            guarded live Apply.
+        </span>
+    </form>
 
     {% else %}
 

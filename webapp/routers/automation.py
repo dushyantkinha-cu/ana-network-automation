@@ -188,18 +188,29 @@ def automation_page(
 def deployment_action(
     device: str = Form(...),
     action: str = Form(...),
+    confirm_device: str = Form(""),
 ):
     allowed_actions = {
         "dry-run",
         "preview",
+        "apply",
     }
 
     if action not in allowed_actions:
         raise HTTPException(
             status_code=400,
+            detail="Unsupported deployment action.",
+        )
+
+    if (
+        action == "apply"
+        and confirm_device != device
+    ):
+        raise HTTPException(
+            status_code=400,
             detail=(
-                "Only dry-run and preview deployments "
-                "are currently enabled from the portal."
+                "Apply confirmation must exactly match "
+                "the selected device."
             ),
         )
 
@@ -225,25 +236,32 @@ def deployment_action(
         )
 
     try:
-        trigger_deployment(
-            device=device,
-            action=action,
-        )
+        if action == "apply":
+            trigger_deployment(
+                device=device,
+                action=action,
+                confirm_device=confirm_device,
+            )
+        else:
+            trigger_deployment(
+                device=device,
+                action=action,
+            )
     except RuntimeError as exc:
         raise HTTPException(
             status_code=502,
             detail=str(exc),
         ) from exc
 
-    action_label = (
-        "Dry run"
-        if action == "dry-run"
-        else "Preview"
-    )
+    action_labels = {
+        "dry-run": "Dry run",
+        "preview": "Preview",
+        "apply": "Apply",
+    }
 
     message = (
-        f"{action_label} queued successfully in Jenkins "
-        f"for {device}."
+        f"{action_labels[action]} queued successfully "
+        f"in Jenkins for {device}."
     )
 
     return RedirectResponse(

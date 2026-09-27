@@ -490,15 +490,19 @@ def test_preview_deployment_action(monkeypatch):
     }
 
 
-def test_apply_not_enabled_from_portal(monkeypatch):
+def test_apply_requires_exact_confirmation(
+    monkeypatch,
+):
     def forbidden_lookup(*args, **kwargs):
         raise AssertionError(
-            "Device lookup must not occur for apply."
+            "Device lookup must not occur when "
+            "Apply confirmation is invalid."
         )
 
     def forbidden_trigger(*args, **kwargs):
         raise AssertionError(
-            "Jenkins must not be triggered for apply."
+            "Jenkins must not be triggered when "
+            "Apply confirmation is invalid."
         )
 
     monkeypatch.setattr(
@@ -518,10 +522,91 @@ def test_apply_not_enabled_from_portal(monkeypatch):
         data={
             "device": "R3",
             "action": "apply",
+            "confirm_device": "R4",
         },
     )
 
     assert response.status_code == 400
+
+
+def test_apply_deployment_action(monkeypatch):
+    monkeypatch.setattr(
+        automation_router,
+        "find_managed_device",
+        lambda hostname: MANAGED_DEVICE,
+    )
+
+    called = {}
+
+    def fake_trigger(
+        device,
+        action,
+        confirm_device="",
+    ):
+        called["device"] = device
+        called["action"] = action
+        called["confirm_device"] = confirm_device
+
+    monkeypatch.setattr(
+        automation_router,
+        "trigger_deployment",
+        fake_trigger,
+    )
+
+    response = client.post(
+        "/automation/deploy",
+        data={
+            "device": "R3",
+            "action": "apply",
+            "confirm_device": "R3",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+    assert response.headers["location"].startswith(
+        "/automation?device=R3&status=success"
+    )
+
+    assert called == {
+        "device": "R3",
+        "action": "apply",
+        "confirm_device": "R3",
+    }
+
+
+def test_r5_cannot_trigger_apply(monkeypatch):
+    monkeypatch.setattr(
+        automation_router,
+        "find_managed_device",
+        lambda hostname: {
+            "hostname": "R5",
+            "automation_managed": False,
+        },
+    )
+
+    def forbidden_trigger(*args, **kwargs):
+        raise AssertionError(
+            "Jenkins must never be triggered for R5."
+        )
+
+    monkeypatch.setattr(
+        automation_router,
+        "trigger_deployment",
+        forbidden_trigger,
+    )
+
+    response = client.post(
+        "/automation/deploy",
+        data={
+            "device": "R5",
+            "action": "apply",
+            "confirm_device": "R5",
+        },
+    )
+
+    assert response.status_code == 403
 
 
 def test_apply_trigger_requires_exact_confirmation():
