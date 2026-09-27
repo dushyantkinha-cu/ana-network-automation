@@ -18,6 +18,9 @@ from webapp.config import (
     PROFILE_TEMPLATE_MAP,
     ROUTING_CHOICE_SET_ID,
 )
+from webapp.services.automation import (
+    run_validation,
+)
 from webapp.services.changes import (
     get_wan_address_state,
 )
@@ -31,6 +34,36 @@ from webapp.ui import templates
 
 
 router = APIRouter()
+
+
+def _automatic_validation_feedback(
+    hostname,
+    success_message,
+):
+    result = run_validation(
+        hostname=hostname,
+    )
+
+    if result.get("returncode") == 0:
+        return (
+            "success",
+            (
+                f"{success_message} "
+                f"Automatic validation passed "
+                f"for {hostname}."
+            ),
+        )
+
+    return (
+        "error",
+        (
+            f"{success_message} "
+            "Automatic validation detected drift "
+            "or a validation failure for "
+            f"{hostname}. "
+            "No deployment was performed."
+        ),
+    )
 
 
 def _safe_return_to(form):
@@ -254,16 +287,23 @@ async def update_device_intent(request: Request):
             detail=str(exc),
         ) from exc
 
-    message = (
+    base_message = (
         f"NetBox intent for {hostname} "
         "was updated successfully."
+    )
+
+    status, message = (
+        _automatic_validation_feedback(
+            hostname,
+            base_message,
+        )
     )
 
     return RedirectResponse(
         url=(
             return_to
             + f"?device={quote(hostname)}"
-            "&status=success"
+            f"&status={quote(status)}"
             f"&message={quote(message)}"
         ),
         status_code=303,
@@ -425,16 +465,23 @@ async def update_wan_addresses(request: Request):
             detail=str(exc),
         ) from exc
 
-    message = (
+    base_message = (
         f"WAN addresses for {hostname} "
         "were updated successfully in NetBox."
+    )
+
+    status, message = (
+        _automatic_validation_feedback(
+            hostname,
+            base_message,
+        )
     )
 
     return RedirectResponse(
         url=(
             return_to
             + f"?device={quote(hostname)}"
-            "&status=success"
+            f"&status={quote(status)}"
             f"&message={quote(message)}"
         ),
         status_code=303,
@@ -517,16 +564,23 @@ async def update_device_metadata(request: Request):
             detail=str(exc),
         ) from exc
 
-    message = (
+    base_message = (
         f"Device metadata for {hostname} "
         "was updated successfully in NetBox."
+    )
+
+    status, message = (
+        _automatic_validation_feedback(
+            hostname,
+            base_message,
+        )
     )
 
     return RedirectResponse(
         url=(
             return_to
             + f"?device={quote(hostname)}"
-            "&status=success"
+            f"&status={quote(status)}"
             f"&message={quote(message)}"
         ),
         status_code=303,

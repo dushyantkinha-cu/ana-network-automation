@@ -809,3 +809,357 @@ def test_recent_device_builds_filters_and_limits(
         "apply",
         "preview",
     ]
+
+
+def test_intent_update_runs_automatic_validation(
+    monkeypatch,
+):
+    from urllib.parse import unquote
+
+    events = []
+
+    monkeypatch.setattr(
+        changes_router,
+        "find_managed_device",
+        lambda hostname: {
+            "hostname": hostname,
+            "automation_managed": True,
+            "platform": "Cisco IOS-XE",
+            "device_id": 3,
+        },
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "get_choice_values",
+        lambda choice_set_id: [
+            {"value": "bgp"},
+        ],
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "PROFILE_TEMPLATE_MAP",
+        {
+            "Cisco IOS-XE": {
+                "distribution": "template.j2",
+            },
+        },
+    )
+
+    def fake_patch(path, payload):
+        events.append(("patch", path))
+
+    def fake_validation(hostname=None):
+        events.append(
+            ("validate", hostname)
+        )
+
+        return {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(
+        changes_router,
+        "netbox_patch",
+        fake_patch,
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "run_validation",
+        fake_validation,
+    )
+
+    response = client.post(
+        "/changes/update",
+        data={
+            "hostname": "R3",
+            "config_profile": "distribution",
+            "routing_protocols": "bgp",
+            "return_to": "/automation",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+    location = unquote(
+        response.headers["location"]
+    )
+
+    assert "status=success" in location
+    assert (
+        "Automatic validation passed for R3."
+        in location
+    )
+
+    assert events == [
+        (
+            "patch",
+            "/api/dcim/devices/3/",
+        ),
+        (
+            "validate",
+            "R3",
+        ),
+    ]
+
+
+def test_validation_failure_keeps_intent_update(
+    monkeypatch,
+):
+    from urllib.parse import unquote
+
+    events = []
+
+    monkeypatch.setattr(
+        changes_router,
+        "find_managed_device",
+        lambda hostname: {
+            "hostname": hostname,
+            "automation_managed": True,
+            "platform": "Cisco IOS-XE",
+            "device_id": 3,
+        },
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "get_choice_values",
+        lambda choice_set_id: [
+            {"value": "bgp"},
+        ],
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "PROFILE_TEMPLATE_MAP",
+        {
+            "Cisco IOS-XE": {
+                "distribution": "template.j2",
+            },
+        },
+    )
+
+    def fake_patch(path, payload):
+        events.append(("patch", path))
+
+    def fake_validation(hostname=None):
+        events.append(
+            ("validate", hostname)
+        )
+
+        return {
+            "returncode": 1,
+            "stdout": "drift detected",
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(
+        changes_router,
+        "netbox_patch",
+        fake_patch,
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "run_validation",
+        fake_validation,
+    )
+
+    response = client.post(
+        "/changes/update",
+        data={
+            "hostname": "R3",
+            "config_profile": "distribution",
+            "routing_protocols": "bgp",
+            "return_to": "/automation",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+    location = unquote(
+        response.headers["location"]
+    )
+
+    assert "status=error" in location
+    assert (
+        "NetBox intent for R3 "
+        "was updated successfully."
+        in location
+    )
+    assert (
+        "No deployment was performed."
+        in location
+    )
+
+    assert events[0][0] == "patch"
+    assert events[1] == (
+        "validate",
+        "R3",
+    )
+
+
+def test_wan_update_runs_automatic_validation(
+    monkeypatch,
+):
+    events = []
+
+    monkeypatch.setattr(
+        changes_router,
+        "find_managed_device",
+        lambda hostname: {
+            "hostname": hostname,
+            "automation_managed": True,
+        },
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "get_wan_address_state",
+        lambda device: {
+            "ipv4": {
+                "id": 41,
+                "prefixlen": 31,
+            },
+            "ipv6": {
+                "id": 42,
+                "prefixlen": 127,
+            },
+        },
+    )
+
+    def fake_patch(path, payload):
+        events.append(("patch", path))
+
+    def fake_validation(hostname=None):
+        events.append(
+            ("validate", hostname)
+        )
+
+        return {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(
+        changes_router,
+        "netbox_patch",
+        fake_patch,
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "run_validation",
+        fake_validation,
+    )
+
+    response = client.post(
+        "/changes/update-wan",
+        data={
+            "hostname": "R3",
+            "wan_ipv4": "203.0.113.2/31",
+            "wan_ipv6": "2001:db8::2/127",
+            "return_to": "/automation",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+    assert events == [
+        (
+            "patch",
+            "/api/ipam/ip-addresses/41/",
+        ),
+        (
+            "patch",
+            "/api/ipam/ip-addresses/42/",
+        ),
+        (
+            "validate",
+            "R3",
+        ),
+    ]
+
+
+def test_metadata_update_runs_automatic_validation(
+    monkeypatch,
+):
+    events = []
+
+    monkeypatch.setattr(
+        changes_router,
+        "find_managed_device",
+        lambda hostname: {
+            "hostname": hostname,
+            "automation_managed": True,
+            "device_id": 3,
+        },
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "get_sites",
+        lambda: [
+            {
+                "id": 7,
+                "name": "Test Site",
+            },
+        ],
+    )
+
+    def fake_patch(path, payload):
+        events.append(("patch", path))
+
+    def fake_validation(hostname=None):
+        events.append(
+            ("validate", hostname)
+        )
+
+        return {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(
+        changes_router,
+        "netbox_patch",
+        fake_patch,
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "run_validation",
+        fake_validation,
+    )
+
+    response = client.post(
+        "/changes/update-metadata",
+        data={
+            "hostname": "R3",
+            "site_id": "7",
+            "return_to": "/automation",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+    assert events == [
+        (
+            "patch",
+            "/api/dcim/devices/3/",
+        ),
+        (
+            "validate",
+            "R3",
+        ),
+    ]
