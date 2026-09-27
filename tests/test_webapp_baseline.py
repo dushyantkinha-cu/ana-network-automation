@@ -1163,3 +1163,421 @@ def test_metadata_update_runs_automatic_validation(
             "R3",
         ),
     ]
+
+
+def _patch_e2e_automation_page(
+    monkeypatch,
+    builds,
+):
+    monkeypatch.setattr(
+        automation_router,
+        "get_devices",
+        lambda: [MANAGED_DEVICE],
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "netbox_get",
+        lambda path: {
+            "id": 7,
+            "name": "R3",
+            "site": {
+                "id": 1,
+                "name": "ANA-Lab",
+            },
+            "device_type": {
+                "manufacturer": {
+                    "name": "Cisco",
+                },
+                "model": "Cisco IOS-XE Router",
+            },
+            "platform": {
+                "name": "Cisco IOS-XE",
+            },
+            "role": {
+                "name": "Router",
+            },
+            "custom_fields": {
+                "routing_protocols": [
+                    "bgp",
+                    "ospfv2",
+                    "ospfv3",
+                ],
+                "config_profile": "edge",
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "get_choice_values",
+        lambda choice_set_id: [
+            {
+                "value": "bgp",
+                "label": "BGP",
+            },
+            {
+                "value": "edge",
+                "label": "Edge",
+            },
+        ],
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "get_sites",
+        lambda: [
+            {
+                "id": 1,
+                "name": "ANA-Lab",
+            },
+        ],
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "get_wan_address_state",
+        lambda device: None,
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "PROFILE_TEMPLATE_MAP",
+        {
+            "Cisco IOS-XE": {
+                "edge": "templates/cisco/edge.j2",
+            },
+        },
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "get_deployment_job",
+        lambda: {
+            "name": "ana-network-automation-deploy",
+            "buildable": True,
+        },
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "get_recent_device_builds",
+        lambda device, limit=5: builds[:limit],
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "latest_validation_report",
+        lambda: None,
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "golden_snapshots",
+        lambda: [],
+    )
+
+
+def test_e2e_intent_update_then_preview(
+    monkeypatch,
+):
+    events = []
+
+    managed_device = {
+        "hostname": "R3",
+        "device_id": 7,
+        "platform": "Cisco IOS-XE",
+        "automation_managed": True,
+    }
+
+    monkeypatch.setattr(
+        changes_router,
+        "find_managed_device",
+        lambda hostname: managed_device,
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "get_choice_values",
+        lambda choice_set_id: [
+            {
+                "value": "bgp",
+            },
+        ],
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "PROFILE_TEMPLATE_MAP",
+        {
+            "Cisco IOS-XE": {
+                "edge": "template.j2",
+            },
+        },
+    )
+
+    def fake_patch(path, payload):
+        events.append(
+            (
+                "netbox",
+                path,
+            )
+        )
+
+    def fake_validation(hostname=None):
+        events.append(
+            (
+                "validation",
+                hostname,
+            )
+        )
+
+        return {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(
+        changes_router,
+        "netbox_patch",
+        fake_patch,
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "run_validation",
+        fake_validation,
+    )
+
+    response = client.post(
+        "/changes/update",
+        data={
+            "hostname": "R3",
+            "config_profile": "edge",
+            "routing_protocols": "bgp",
+            "return_to": "/automation",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+    monkeypatch.setattr(
+        automation_router,
+        "find_managed_device",
+        lambda hostname: managed_device,
+    )
+
+    def fake_trigger(
+        device,
+        action,
+        confirm_device="",
+    ):
+        events.append(
+            (
+                "jenkins",
+                device,
+                action,
+            )
+        )
+
+        return {
+            "status_code": 201,
+            "queue_url": (
+                "http://jenkins.example/"
+                "queue/item/100/"
+            ),
+            "device": device,
+            "action": action,
+        }
+
+    monkeypatch.setattr(
+        automation_router,
+        "trigger_deployment",
+        fake_trigger,
+    )
+
+    response = client.post(
+        "/automation/deploy",
+        data={
+            "device": "R3",
+            "action": "preview",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+    assert events == [
+        (
+            "netbox",
+            "/api/dcim/devices/7/",
+        ),
+        (
+            "validation",
+            "R3",
+        ),
+        (
+            "jenkins",
+            "R3",
+            "preview",
+        ),
+    ]
+
+
+def test_e2e_apply_then_status_render(
+    monkeypatch,
+):
+    builds = []
+
+    _patch_e2e_automation_page(
+        monkeypatch,
+        builds,
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "find_managed_device",
+        lambda hostname: MANAGED_DEVICE,
+    )
+
+    def fake_trigger(
+        device,
+        action,
+        confirm_device="",
+    ):
+        assert device == "R3"
+        assert action == "apply"
+        assert confirm_device == "R3"
+
+        builds.insert(
+            0,
+            {
+                "number": 99,
+                "url": (
+                    "http://jenkins.example/"
+                    "job/deploy/99/"
+                ),
+                "building": False,
+                "result": "SUCCESS",
+                "parameters": {
+                    "DEVICE": "R3",
+                    "ACTION": "apply",
+                },
+            },
+        )
+
+        return {
+            "status_code": 201,
+            "queue_url": (
+                "http://jenkins.example/"
+                "queue/item/99/"
+            ),
+            "device": device,
+            "action": action,
+        }
+
+    monkeypatch.setattr(
+        automation_router,
+        "trigger_deployment",
+        fake_trigger,
+    )
+
+    response = client.post(
+        "/automation/deploy",
+        data={
+            "device": "R3",
+            "action": "apply",
+            "confirm_device": "R3",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+
+    rendered = " ".join(
+        response.text.split()
+    )
+
+    assert "Recent Deployments for R3" in rendered
+    assert "#99" in rendered
+    assert "APPLY" in rendered
+    assert "SUCCESS" in rendered
+
+
+def test_e2e_r5_blocked_at_intent_and_deploy(
+    monkeypatch,
+):
+    r5 = {
+        "hostname": "R5",
+        "automation_managed": False,
+    }
+
+    monkeypatch.setattr(
+        changes_router,
+        "find_managed_device",
+        lambda hostname: r5,
+    )
+
+    def forbidden_patch(*args, **kwargs):
+        raise AssertionError(
+            "R5 must never be changed in NetBox "
+            "through managed intent automation."
+        )
+
+    def forbidden_validation(*args, **kwargs):
+        raise AssertionError(
+            "R5 must never enter managed validation."
+        )
+
+    monkeypatch.setattr(
+        changes_router,
+        "netbox_patch",
+        forbidden_patch,
+    )
+
+    monkeypatch.setattr(
+        changes_router,
+        "run_validation",
+        forbidden_validation,
+    )
+
+    response = client.post(
+        "/changes/update",
+        data={
+            "hostname": "R5",
+            "config_profile": "edge",
+            "routing_protocols": "bgp",
+        },
+    )
+
+    assert response.status_code == 403
+
+    monkeypatch.setattr(
+        automation_router,
+        "find_managed_device",
+        lambda hostname: r5,
+    )
+
+    def forbidden_trigger(*args, **kwargs):
+        raise AssertionError(
+            "R5 must never trigger Jenkins deployment."
+        )
+
+    monkeypatch.setattr(
+        automation_router,
+        "trigger_deployment",
+        forbidden_trigger,
+    )
+
+    response = client.post(
+        "/automation/deploy",
+        data={
+            "device": "R5",
+            "action": "apply",
+            "confirm_device": "R5",
+        },
+    )
+
+    assert response.status_code == 403
