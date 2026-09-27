@@ -116,7 +116,7 @@ pipeline {
             }
         }
 
-        stage('Manual Approval') {
+        stage('Pre-Apply Preview') {
             when {
                 expression {
                     params.ACTION == 'apply'
@@ -124,17 +124,88 @@ pipeline {
             }
 
             steps {
-                timeout(
-                    time: 5,
-                    unit: 'MINUTES'
-                ) {
-                    input(
-                        id: 'DeployApproval',
-                        message:
-                            "Apply intended configuration to " +
-                            "${params.DEVICE}?",
-                        ok: 'Deploy'
-                    )
+                script {
+                    def credentialId
+
+                    if (
+                        params.DEVICE in [
+                            'R1',
+                            'R2',
+                            'S1',
+                            'S2',
+                            'S3'
+                        ]
+                    ) {
+                        credentialId = 'arista-device-credentials'
+                    } else if (
+                        params.DEVICE in [
+                            'R3',
+                            'R4'
+                        ]
+                    ) {
+                        credentialId = 'cisco-device-credentials'
+                    } else if (
+                        params.DEVICE == 'S4'
+                    ) {
+                        credentialId = 'nokia-device-credentials'
+                    } else {
+                        error(
+                            "No credential mapping for ${params.DEVICE}"
+                        )
+                    }
+
+                    withCredentials([
+                        string(
+                            credentialsId: 'netbox-url',
+                            variable: 'NETBOX_URL'
+                        ),
+                        string(
+                            credentialsId: 'netbox-token',
+                            variable: 'NETBOX_TOKEN'
+                        ),
+                        usernamePassword(
+                            credentialsId: credentialId,
+                            usernameVariable: 'DEVICE_USERNAME',
+                            passwordVariable: 'DEVICE_PASSWORD'
+                        )
+                    ]) {
+                        sh '''
+                            set -eu
+
+                            case "$DEVICE" in
+                                R1|R2|S1|S2|S3)
+                                    export ARISTA_USERNAME="$DEVICE_USERNAME"
+                                    export ARISTA_PASSWORD="$DEVICE_PASSWORD"
+                                    ;;
+
+                                R3|R4)
+                                    export CISCO_USERNAME="$DEVICE_USERNAME"
+                                    export CISCO_PASSWORD="$DEVICE_PASSWORD"
+                                    ;;
+
+                                S4)
+                                    export NOKIA_USERNAME="$DEVICE_USERNAME"
+                                    export NOKIA_PASSWORD="$DEVICE_PASSWORD"
+                                    ;;
+
+                                *)
+                                    echo "ERROR: No credential mapping for $DEVICE"
+                                    exit 1
+                                    ;;
+                            esac
+
+                            echo "=== AUTOMATIC PRE-APPLY PREVIEW ==="
+
+                            .venv/bin/python \
+                                automation/deploy_config.py \
+                                --device "$DEVICE" \
+                                --preview
+
+                            echo
+                            echo "Pre-apply preview passed."
+                            echo "Continuing to guarded live apply."
+                        '''
+                    }
                 }
             }
         }
