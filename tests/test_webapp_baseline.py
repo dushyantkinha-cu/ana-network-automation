@@ -436,3 +436,89 @@ def test_r5_cannot_trigger_dry_run(monkeypatch):
     )
 
     assert response.status_code == 403
+
+
+def test_preview_deployment_action(monkeypatch):
+    monkeypatch.setattr(
+        automation_router,
+        "find_managed_device",
+        lambda hostname: MANAGED_DEVICE,
+    )
+
+    called = {}
+
+    def fake_trigger(
+        device,
+        action,
+        confirm_device="",
+    ):
+        called["device"] = device
+        called["action"] = action
+
+        return {
+            "status_code": 201,
+            "queue_url": (
+                "http://jenkins.example/queue/item/11/"
+            ),
+            "device": device,
+            "action": action,
+        }
+
+    monkeypatch.setattr(
+        automation_router,
+        "trigger_deployment",
+        fake_trigger,
+    )
+
+    response = client.post(
+        "/automation/deploy",
+        data={
+            "device": "R3",
+            "action": "preview",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith(
+        "/automation?device=R3&status=success"
+    )
+
+    assert called == {
+        "device": "R3",
+        "action": "preview",
+    }
+
+
+def test_apply_not_enabled_from_portal(monkeypatch):
+    def forbidden_lookup(*args, **kwargs):
+        raise AssertionError(
+            "Device lookup must not occur for apply."
+        )
+
+    def forbidden_trigger(*args, **kwargs):
+        raise AssertionError(
+            "Jenkins must not be triggered for apply."
+        )
+
+    monkeypatch.setattr(
+        automation_router,
+        "find_managed_device",
+        forbidden_lookup,
+    )
+
+    monkeypatch.setattr(
+        automation_router,
+        "trigger_deployment",
+        forbidden_trigger,
+    )
+
+    response = client.post(
+        "/automation/deploy",
+        data={
+            "device": "R3",
+            "action": "apply",
+        },
+    )
+
+    assert response.status_code == 400

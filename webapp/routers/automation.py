@@ -189,12 +189,17 @@ def deployment_action(
     device: str = Form(...),
     action: str = Form(...),
 ):
-    if action != "dry-run":
+    allowed_actions = {
+        "dry-run",
+        "preview",
+    }
+
+    if action not in allowed_actions:
         raise HTTPException(
             status_code=400,
             detail=(
-                "Only dry-run deployment is currently "
-                "enabled from the portal."
+                "Only dry-run and preview deployments "
+                "are currently enabled from the portal."
             ),
         )
 
@@ -222,7 +227,7 @@ def deployment_action(
     try:
         trigger_deployment(
             device=device,
-            action="dry-run",
+            action=action,
         )
     except RuntimeError as exc:
         raise HTTPException(
@@ -230,8 +235,14 @@ def deployment_action(
             detail=str(exc),
         ) from exc
 
+    action_label = (
+        "Dry run"
+        if action == "dry-run"
+        else "Preview"
+    )
+
     message = (
-        f"Dry run queued successfully in Jenkins "
+        f"{action_label} queued successfully in Jenkins "
         f"for {device}."
     )
 

@@ -801,8 +801,39 @@
         </span>
     </form>
 
+    <form
+        method="post"
+        action="/automation/deploy"
+        class="action-bar"
+    >
+        <input
+            type="hidden"
+            name="device"
+            value="{{ selected_device.hostname }}"
+        >
+
+        <input
+            type="hidden"
+            name="action"
+            value="preview"
+        >
+
+        <button
+            type="submit"
+            class="button-secondary"
+        >
+            Run Preview
+        </button>
+
+        <span class="action-note">
+            Connects to the device, stages the intended
+            configuration temporarily, validates it,
+            and then aborts or discards the candidate.
+        </span>
+    </form>
+
     <p class="action-note">
-        Preview and Apply controls are not enabled yet.
+        Apply is not enabled yet.
     </p>
 
     {% else %}
