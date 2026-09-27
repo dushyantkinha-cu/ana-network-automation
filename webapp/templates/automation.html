@@ -4,25 +4,45 @@
 
 <div class="page-heading">
     <div>
-        <h1>Automation Status</h1>
+        <h1>Network Automation</h1>
 
         <p>
-            Validation, drift detection, and golden
-            configuration state.
+            Manage network intent, validate configuration,
+            and review automation state.
         </p>
+    </div>
+
+    <div class="heading-actions">
+        <a
+            href="/changes/new"
+            class="button-primary button-link"
+        >
+            Add New Device
+        </a>
+
+        <a
+            href="/changes/new-site"
+            class="button-secondary button-link"
+        >
+            Add New Site
+        </a>
     </div>
 </div>
 
+
 {% if action_message %}
+
 <div
     class="alert
     {% if action_status == 'success' %}
     alert-success
     {% else %}
     alert-error
-    {% endif %}">
+    {% endif %}"
+>
     {{ action_message }}
 </div>
+
 {% endif %}
 
 
@@ -96,13 +116,501 @@
 <section class="panel">
 
     <div class="panel-header">
-        <h2>Validation Pipeline</h2>
+        <h2>Select Managed Device</h2>
+    </div>
+
+    <form
+        method="get"
+        action="/automation"
+        class="change-selector"
+    >
+        <select
+            name="device"
+            onchange="this.form.submit()"
+        >
+            <option value="">
+                Select a device...
+            </option>
+
+            {% for device in devices %}
+
+            <option
+                value="{{ device.hostname }}"
+                {% if selected_device
+                      and selected_device.hostname
+                          == device.hostname %}
+                selected
+                {% endif %}
+            >
+                {{ device.hostname }}
+                — {{ device.platform }}
+            </option>
+
+            {% endfor %}
+        </select>
+
+        <noscript>
+            <button
+                type="submit"
+                class="button-primary"
+            >
+                Load Device
+            </button>
+        </noscript>
+    </form>
+
+</section>
+
+
+{% if selected_device %}
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>
+            Device Overview — {{ selected_device.hostname }}
+        </h2>
+    </div>
+
+    <div class="detail-grid">
+
+        <div>
+            <span class="detail-label">
+                Site
+            </span>
+
+            <strong>
+                {{ raw_device.site.name }}
+            </strong>
+        </div>
+
+
+        <div>
+            <span class="detail-label">
+                Manufacturer
+            </span>
+
+            <strong>
+                {{ selected_device.manufacturer }}
+            </strong>
+        </div>
+
+
+        <div>
+            <span class="detail-label">
+                Platform
+            </span>
+
+            <strong>
+                {{ selected_device.platform }}
+            </strong>
+        </div>
+
+
+        <div>
+            <span class="detail-label">
+                Role
+            </span>
+
+            <strong>
+                {{ selected_device.role }}
+            </strong>
+        </div>
+
+
+        <div>
+            <span class="detail-label">
+                Management IP
+            </span>
+
+            <code>
+                {{ selected_device.management_ip }}
+            </code>
+        </div>
+
+
+        <div>
+            <span class="detail-label">
+                Jinja2 Template
+            </span>
+
+            <code>
+                {% if template_path %}
+                    {{ template_path }}
+                {% else %}
+                    No compatible template
+                {% endif %}
+            </code>
+        </div>
+
+    </div>
+
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Device Metadata</h2>
+    </div>
+
+    <form
+        method="post"
+        action="/changes/update-metadata"
+        class="intent-form"
+    >
+        <input
+            type="hidden"
+            name="return_to"
+            value="/automation"
+        >
+
+        <input
+            type="hidden"
+            name="hostname"
+            value="{{ selected_device.hostname }}"
+        >
+
+        <div class="form-field">
+
+            <label for="site_id">
+                Site
+            </label>
+
+            <select
+                id="site_id"
+                name="site_id"
+                required
+            >
+                {% for site in sites %}
+
+                <option
+                    value="{{ site.id }}"
+                    {% if raw_device.site
+                          and raw_device.site.id
+                              == site.id %}
+                    selected
+                    {% endif %}
+                >
+                    {{ site.name }}
+                </option>
+
+                {% endfor %}
+            </select>
+
+        </div>
+
+
+        <div class="metadata-readonly-grid">
+
+            <div>
+                <span class="detail-label">
+                    Vendor
+                </span>
+
+                <strong>
+                    {{ raw_device.device_type.manufacturer.name }}
+                </strong>
+            </div>
+
+
+            <div>
+                <span class="detail-label">
+                    Device Type
+                </span>
+
+                <strong>
+                    {{ raw_device.device_type.model }}
+                </strong>
+            </div>
+
+
+            <div>
+                <span class="detail-label">
+                    Platform
+                </span>
+
+                <strong>
+                    {{ raw_device.platform.name }}
+                </strong>
+            </div>
+
+
+            <div>
+                <span class="detail-label">
+                    Role
+                </span>
+
+                <strong>
+                    {{ raw_device.role.name }}
+                </strong>
+            </div>
+
+        </div>
+
+        <span class="field-help">
+            Vendor, device type, platform, and role are
+            shown for context. Cross-vendor changes are
+            handled through the new-device workflow.
+        </span>
+
+        <button
+            type="submit"
+            class="button-primary"
+        >
+            Save Device Metadata
+        </button>
+
+    </form>
+
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Intended Configuration</h2>
+    </div>
+
+    <form
+        method="post"
+        action="/changes/update"
+        class="intent-form"
+    >
+        <input
+            type="hidden"
+            name="return_to"
+            value="/automation"
+        >
+
+        <input
+            type="hidden"
+            name="hostname"
+            value="{{ selected_device.hostname }}"
+        >
+
+        <fieldset>
+
+            <legend>
+                Routing Protocols
+            </legend>
+
+            <div class="checkbox-grid">
+
+                {% for choice in routing_choices %}
+
+                <label class="checkbox-option">
+
+                    <input
+                        type="checkbox"
+                        name="routing_protocols"
+                        value="{{ choice.value }}"
+                        {% if choice.value
+                              in selected_device.routing_protocols %}
+                        checked
+                        {% endif %}
+                    >
+
+                    <span>
+                        {{ choice.label }}
+                    </span>
+
+                </label>
+
+                {% endfor %}
+
+            </div>
+
+        </fieldset>
+
+
+        <div class="form-field">
+
+            <label for="config_profile">
+                Configuration Profile
+            </label>
+
+            <select
+                id="config_profile"
+                name="config_profile"
+                required
+            >
+                {% for choice in compatible_profiles %}
+
+                <option
+                    value="{{ choice.value }}"
+                    {% if choice.value
+                          == selected_device.config_profile %}
+                    selected
+                    {% endif %}
+                >
+                    {{ choice.label }}
+                </option>
+
+                {% endfor %}
+            </select>
+
+            <span class="field-help">
+                Only profiles with an implemented Jinja2
+                template for this platform are selectable.
+            </span>
+
+        </div>
+
+
+        <div class="change-warning">
+            This updates intended state in NetBox.
+            Deployment is handled separately through the
+            guarded automation workflow.
+        </div>
+
+        <button
+            type="submit"
+            class="button-primary"
+        >
+            Save Intent to NetBox
+        </button>
+
+    </form>
+
+</section>
+
+
+{% if wan_state %}
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>WAN Addressing</h2>
+    </div>
+
+    <div class="wan-summary">
+
+        <div>
+            <span class="detail-label">
+                Provider-facing Interface
+            </span>
+
+            <strong>
+                {{ wan_state.interface_name }}
+            </strong>
+        </div>
+
+        <div>
+            <span class="detail-label">
+                Current IPv4
+            </span>
+
+            <code>
+                {{ wan_state.ipv4.address }}
+            </code>
+        </div>
+
+        <div>
+            <span class="detail-label">
+                Current IPv6
+            </span>
+
+            <code>
+                {{ wan_state.ipv6.address }}
+            </code>
+        </div>
+
+    </div>
+
+
+    <form
+        method="post"
+        action="/changes/update-wan"
+        class="intent-form"
+    >
+        <input
+            type="hidden"
+            name="return_to"
+            value="/automation"
+        >
+
+        <input
+            type="hidden"
+            name="hostname"
+            value="{{ selected_device.hostname }}"
+        >
+
+        <div class="form-field">
+
+            <label for="wan_ipv4">
+                WAN IPv4
+            </label>
+
+            <input
+                id="wan_ipv4"
+                name="wan_ipv4"
+                type="text"
+                value="{{ wan_state.ipv4.address }}"
+                required
+            >
+
+            <span class="field-help">
+                CIDR notation required.
+                Prefix length is preserved.
+            </span>
+
+        </div>
+
+
+        <div class="form-field">
+
+            <label for="wan_ipv6">
+                WAN IPv6
+            </label>
+
+            <input
+                id="wan_ipv6"
+                name="wan_ipv6"
+                type="text"
+                value="{{ wan_state.ipv6.address }}"
+                required
+            >
+
+            <span class="field-help">
+                CIDR notation required.
+                Prefix length is preserved.
+            </span>
+
+        </div>
+
+
+        <div class="change-warning">
+            This updates the existing IP address objects
+            in NetBox. It does not directly configure
+            the network device.
+        </div>
+
+        <button
+            type="submit"
+            class="button-primary"
+        >
+            Save WAN Addresses to NetBox
+        </button>
+
+    </form>
+
+</section>
+
+{% endif %}
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Validation</h2>
     </div>
 
     <div class="action-bar">
+
         <form
             method="post"
-            action="/automation/validate"
+            action="/automation/validate?device={{ selected_device.hostname }}"
         >
             <button
                 type="submit"
@@ -116,7 +624,9 @@
             Read-only: renders intent, collects live configs,
             checks intended paths, and detects scoped drift.
         </span>
+
     </div>
+
 
     {% if report %}
 
@@ -188,6 +698,29 @@
     {% endif %}
 
 </section>
+
+
+<section class="panel">
+
+    <div class="panel-header">
+        <h2>Deployment</h2>
+    </div>
+
+    <p>
+        Guarded deployment controls for
+        <strong>{{ selected_device.hostname }}</strong>
+        will be provided here.
+    </p>
+
+    <span class="action-note">
+        Dry-run, preview, apply, Jenkins status, and
+        post-deployment results will be integrated in
+        the next Stage 7H steps.
+    </span>
+
+</section>
+
+{% endif %}
 
 
 <section class="panel">
@@ -272,7 +805,8 @@
     <p>
         The provider-owned R5 device is intentionally excluded
         from rendering, live collection, validation, drift
-        detection, and golden configuration promotion.
+        detection, golden configuration promotion, and
+        deployment.
     </p>
 
 </section>

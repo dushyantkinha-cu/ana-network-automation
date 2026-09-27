@@ -110,7 +110,7 @@ def test_validation_action_success(monkeypatch):
     monkeypatch.setattr(
         automation_router,
         "run_validation",
-        lambda: {
+        lambda hostname=None: {
             "returncode": 0,
             "stdout": "",
             "stderr": "",

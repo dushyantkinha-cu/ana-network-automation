@@ -31,6 +31,22 @@ from webapp.ui import templates
 
 
 router = APIRouter()
+
+
+def _safe_return_to(form):
+    return_to = str(
+        form.get("return_to", "/changes")
+    ).strip()
+
+    if return_to in {
+        "/changes",
+        "/automation",
+    }:
+        return return_to
+
+    return "/changes"
+
+
 @router.get("/changes")
 def changes_page(
     request: Request,
@@ -145,6 +161,8 @@ def changes_page(
 async def update_device_intent(request: Request):
     form = await request.form()
 
+    return_to = _safe_return_to(form)
+
     hostname = str(
         form.get("hostname", "")
     ).strip()
@@ -243,8 +261,8 @@ async def update_device_intent(request: Request):
 
     return RedirectResponse(
         url=(
-            "/changes"
-            f"?device={quote(hostname)}"
+            return_to
+            + f"?device={quote(hostname)}"
             "&status=success"
             f"&message={quote(message)}"
         ),
@@ -255,6 +273,8 @@ async def update_device_intent(request: Request):
 @router.post("/changes/update-wan")
 async def update_wan_addresses(request: Request):
     form = await request.form()
+
+    return_to = _safe_return_to(form)
 
     hostname = str(
         form.get("hostname", "")
@@ -412,8 +432,8 @@ async def update_wan_addresses(request: Request):
 
     return RedirectResponse(
         url=(
-            "/changes"
-            f"?device={quote(hostname)}"
+            return_to
+            + f"?device={quote(hostname)}"
             "&status=success"
             f"&message={quote(message)}"
         ),
@@ -424,6 +444,8 @@ async def update_wan_addresses(request: Request):
 @router.post("/changes/update-metadata")
 async def update_device_metadata(request: Request):
     form = await request.form()
+
+    return_to = _safe_return_to(form)
 
     hostname = str(
         form.get("hostname", "")
@@ -502,8 +524,8 @@ async def update_device_metadata(request: Request):
 
     return RedirectResponse(
         url=(
-            "/changes"
-            f"?device={quote(hostname)}"
+            return_to
+            + f"?device={quote(hostname)}"
             "&status=success"
             f"&message={quote(message)}"
         ),

@@ -11,13 +11,24 @@ from webapp.config import (
 )
 
 
-def run_validation():
+def run_validation(hostname=None):
+    command = [
+        sys.executable,
+        str(VALIDATION_SCRIPT),
+    ]
+
+    if hostname:
+        command.extend(
+            [
+                "--device",
+                hostname,
+            ]
+        )
+
+    command.append("--details")
+
     result = subprocess.run(
-        [
-            sys.executable,
-            str(VALIDATION_SCRIPT),
-            "--details",
-        ],
+        command,
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
