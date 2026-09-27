@@ -628,3 +628,71 @@ def test_apply_trigger_requires_exact_confirmation():
             "Mismatched apply confirmation "
             "must be rejected."
         )
+
+
+def test_latest_device_build_filters_by_device(
+    monkeypatch,
+):
+    from webapp.clients import jenkins
+
+    class FakeResponse:
+        def json(self):
+            return {
+                "builds": [
+                    {
+                        "number": 30,
+                        "building": False,
+                        "result": "SUCCESS",
+                        "actions": [
+                            {
+                                "parameters": [
+                                    {
+                                        "name": "DEVICE",
+                                        "value": "R1",
+                                    },
+                                    {
+                                        "name": "ACTION",
+                                        "value": "apply",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "number": 29,
+                        "building": False,
+                        "result": "SUCCESS",
+                        "actions": [
+                            {
+                                "parameters": [
+                                    {
+                                        "name": "DEVICE",
+                                        "value": "R3",
+                                    },
+                                    {
+                                        "name": "ACTION",
+                                        "value": "preview",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            }
+
+    monkeypatch.setattr(
+        jenkins,
+        "jenkins_request",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    build = jenkins.get_latest_device_build(
+        "R3"
+    )
+
+    assert build["number"] == 29
+    assert build["parameters"]["DEVICE"] == "R3"
+    assert (
+        build["parameters"]["ACTION"]
+        == "preview"
+    )

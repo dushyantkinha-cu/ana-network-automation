@@ -742,26 +742,50 @@
 
         <br>
 
-        <strong>Last Build:</strong>
+        <strong>Selected Device:</strong>
+        <code>{{ selected_device.hostname }}</code>
 
-        {% if deployment_job.lastBuild %}
-            #{{ deployment_job.lastBuild.number }}
+        <br>
+
+        <strong>Latest Device Build:</strong>
+
+        {% if deployment_device_build %}
+            #{{ deployment_device_build.number }}
         {% else %}
             None
         {% endif %}
 
         <br>
 
-        <strong>Last Completed Result:</strong>
+        <strong>Action:</strong>
 
-        {% if deployment_job.lastCompletedBuild %}
+        {% if deployment_device_build %}
+            {{ deployment_device_build.parameters.ACTION
+               | default("unknown")
+               | upper }}
+        {% else %}
+            None
+        {% endif %}
 
-            {% if deployment_job.lastCompletedBuild.result == "SUCCESS" %}
+        <br>
+
+        <strong>Result:</strong>
+
+        {% if deployment_device_build %}
+
+            {% if deployment_device_build.building %}
+                <strong>RUNNING</strong>
+
+            {% elif deployment_device_build.result == "SUCCESS" %}
                 <span class="status-pass">SUCCESS</span>
-            {% else %}
+
+            {% elif deployment_device_build.result %}
                 <span class="status-fail">
-                    {{ deployment_job.lastCompletedBuild.result }}
+                    {{ deployment_device_build.result }}
                 </span>
+
+            {% else %}
+                UNKNOWN
             {% endif %}
 
         {% else %}

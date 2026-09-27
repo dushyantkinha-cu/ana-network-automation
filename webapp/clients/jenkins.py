@@ -282,3 +282,50 @@ def get_deployment_build(build_number):
     data["parameters"] = parameters
 
     return data
+
+
+def get_latest_device_build(device):
+    if device not in ALLOWED_DEVICES:
+        raise RuntimeError(
+            f"Device is not allowed for deployment: {device}"
+        )
+
+    response = jenkins_request(
+        "GET",
+        (
+            f"/job/{_job_path()}/api/json"
+            "?tree=builds["
+            "number,url,building,result,timestamp,duration,"
+            "actions[parameters[name,value]]"
+            "]"
+        ),
+    )
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise RuntimeError(
+            "Jenkins returned invalid build-list JSON."
+        ) from exc
+
+    for build in data.get("builds", []):
+        parameters = {}
+
+        for action in build.get("actions", []):
+            for parameter in action.get(
+                "parameters",
+                [],
+            ):
+                name = parameter.get("name")
+
+                if name:
+                    parameters[name] = parameter.get(
+                        "value"
+                    )
+
+        build["parameters"] = parameters
+
+        if parameters.get("DEVICE") == device:
+            return build
+
+    return None
