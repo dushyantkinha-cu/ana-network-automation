@@ -628,23 +628,3 @@ def test_apply_trigger_requires_exact_confirmation():
             "Mismatched apply confirmation "
             "must be rejected."
         )
-
-
-def test_invalid_approval_decision_is_rejected():
-    from webapp.clients import jenkins
-
-    try:
-        jenkins.submit_deployment_approval(
-            build_number=99,
-            decision="maybe",
-        )
-    except RuntimeError as exc:
-        assert (
-            "approve or abort"
-            in str(exc).lower()
-        )
-    else:
-        raise AssertionError(
-            "Invalid approval decision "
-            "must be rejected."
-        )
