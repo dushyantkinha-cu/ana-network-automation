@@ -7,6 +7,7 @@ pipeline {
     }
 
     triggers {
+        // Keep Jenkins private while automatically testing Git changes.
         pollSCM('H/5 * * * *')
     }
 
