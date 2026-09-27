@@ -129,6 +129,7 @@ pipeline {
                     unit: 'MINUTES'
                 ) {
                     input(
+                        id: 'DeployApproval',
                         message:
                             "Apply intended configuration to " +
                             "${params.DEVICE}?",
