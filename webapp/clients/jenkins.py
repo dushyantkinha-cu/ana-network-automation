@@ -283,11 +283,18 @@ def get_deployment_build(build_number):
 
     return data
 
-
-def get_latest_device_build(device):
+def get_recent_device_builds(
+    device,
+    limit=5,
+):
     if device not in ALLOWED_DEVICES:
         raise RuntimeError(
             f"Device is not allowed for deployment: {device}"
+        )
+
+    if limit < 1:
+        raise RuntimeError(
+            "Deployment history limit must be at least 1."
         )
 
     response = jenkins_request(
@@ -308,6 +315,8 @@ def get_latest_device_build(device):
             "Jenkins returned invalid build-list JSON."
         ) from exc
 
+    matching_builds = []
+
     for build in data.get("builds", []):
         parameters = {}
 
@@ -326,6 +335,23 @@ def get_latest_device_build(device):
         build["parameters"] = parameters
 
         if parameters.get("DEVICE") == device:
-            return build
+            matching_builds.append(build)
+
+    matching_builds.sort(
+        key=lambda build: build.get("number", 0),
+        reverse=True,
+    )
+
+    return matching_builds[:limit]
+
+
+def get_latest_device_build(device):
+    builds = get_recent_device_builds(
+        device,
+        limit=1,
+    )
+
+    if builds:
+        return builds[0]
 
     return None

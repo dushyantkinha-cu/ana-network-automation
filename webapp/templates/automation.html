@@ -794,6 +794,87 @@
 
     </div>
 
+    <h3>
+        Recent Deployments for
+        {{ selected_device.hostname }}
+    </h3>
+
+    {% if deployment_device_builds %}
+
+    <table>
+        <thead>
+            <tr>
+                <th>Build</th>
+                <th>Action</th>
+                <th>State</th>
+                <th>Result</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for build in deployment_device_builds %}
+
+            <tr>
+                <td>
+                    <a
+                        href="{{ build.url }}"
+                        target="_blank"
+                        rel="noopener"
+                    >
+                        #{{ build.number }}
+                    </a>
+                </td>
+
+                <td>
+                    {{ build.parameters.ACTION
+                       | default("unknown")
+                       | upper }}
+                </td>
+
+                <td>
+                    {% if build.building %}
+                        <strong>RUNNING</strong>
+                    {% else %}
+                        COMPLETED
+                    {% endif %}
+                </td>
+
+                <td>
+                    {% if build.building %}
+                        &mdash;
+
+                    {% elif build.result == "SUCCESS" %}
+                        <span class="status-pass">
+                            SUCCESS
+                        </span>
+
+                    {% elif build.result %}
+                        <span class="status-fail">
+                            {{ build.result }}
+                        </span>
+
+                    {% else %}
+                        UNKNOWN
+                    {% endif %}
+                </td>
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+    </table>
+
+    {% else %}
+
+    <p class="action-note">
+        No Jenkins deployment history exists for
+        {{ selected_device.hostname }}.
+    </p>
+
+    {% endif %}
+
+
     <form
         method="post"
         action="/automation/deploy"

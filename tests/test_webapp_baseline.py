@@ -696,3 +696,116 @@ def test_latest_device_build_filters_by_device(
         build["parameters"]["ACTION"]
         == "preview"
     )
+
+
+def test_recent_device_builds_filters_and_limits(
+    monkeypatch,
+):
+    from webapp.clients import jenkins
+
+    class FakeResponse:
+        def json(self):
+            return {
+                "builds": [
+                    {
+                        "number": 30,
+                        "building": False,
+                        "result": "SUCCESS",
+                        "actions": [
+                            {
+                                "parameters": [
+                                    {
+                                        "name": "DEVICE",
+                                        "value": "R1",
+                                    },
+                                    {
+                                        "name": "ACTION",
+                                        "value": "apply",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "number": 29,
+                        "building": False,
+                        "result": "SUCCESS",
+                        "actions": [
+                            {
+                                "parameters": [
+                                    {
+                                        "name": "DEVICE",
+                                        "value": "R3",
+                                    },
+                                    {
+                                        "name": "ACTION",
+                                        "value": "preview",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "number": 28,
+                        "building": False,
+                        "result": "SUCCESS",
+                        "actions": [
+                            {
+                                "parameters": [
+                                    {
+                                        "name": "DEVICE",
+                                        "value": "R1",
+                                    },
+                                    {
+                                        "name": "ACTION",
+                                        "value": "preview",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "number": 27,
+                        "building": False,
+                        "result": "SUCCESS",
+                        "actions": [
+                            {
+                                "parameters": [
+                                    {
+                                        "name": "DEVICE",
+                                        "value": "R1",
+                                    },
+                                    {
+                                        "name": "ACTION",
+                                        "value": "dry-run",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            }
+
+    monkeypatch.setattr(
+        jenkins,
+        "jenkins_request",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    builds = jenkins.get_recent_device_builds(
+        "R1",
+        limit=2,
+    )
+
+    assert [
+        build["number"]
+        for build in builds
+    ] == [30, 28]
+
+    assert [
+        build["parameters"]["ACTION"]
+        for build in builds
+    ] == [
+        "apply",
+        "preview",
+    ]

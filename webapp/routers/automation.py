@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse
 
 from webapp.clients.jenkins import (
     get_deployment_job,
-    get_latest_device_build,
+    get_recent_device_builds,
     trigger_deployment,
 )
 from webapp.clients.netbox import netbox_get
@@ -65,6 +65,7 @@ def automation_page(
     sites = []
     deployment_job = None
     deployment_device_build = None
+    deployment_device_builds = []
     deployment_error = None
 
     if device:
@@ -138,8 +139,17 @@ def automation_page(
 
         try:
             deployment_job = get_deployment_job()
+            deployment_device_builds = (
+                get_recent_device_builds(
+                    device,
+                    limit=5,
+                )
+            )
+
             deployment_device_build = (
-                get_latest_device_build(device)
+                deployment_device_builds[0]
+                if deployment_device_builds
+                else None
             )
         except RuntimeError as exc:
             deployment_error = str(exc)
@@ -176,6 +186,9 @@ def automation_page(
             "deployment_job": deployment_job,
             "deployment_device_build": (
                 deployment_device_build
+            ),
+            "deployment_device_builds": (
+                deployment_device_builds
             ),
             "deployment_error": deployment_error,
             "validation": validation,
