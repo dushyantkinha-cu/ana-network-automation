@@ -352,3 +352,87 @@ def test_invalid_hostname_creates_nothing(
     )
 
     assert response.status_code == 400
+
+
+def test_dry_run_deployment_action(monkeypatch):
+    monkeypatch.setattr(
+        automation_router,
+        "find_managed_device",
+        lambda hostname: MANAGED_DEVICE,
+    )
+
+    called = {}
+
+    def fake_trigger(
+        device,
+        action,
+        confirm_device="",
+    ):
+        called["device"] = device
+        called["action"] = action
+
+        return {
+            "status_code": 201,
+            "queue_url": (
+                "http://jenkins.example/queue/item/10/"
+            ),
+            "device": device,
+            "action": action,
+        }
+
+    monkeypatch.setattr(
+        automation_router,
+        "trigger_deployment",
+        fake_trigger,
+    )
+
+    response = client.post(
+        "/automation/deploy",
+        data={
+            "device": "R3",
+            "action": "dry-run",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith(
+        "/automation?device=R3&status=success"
+    )
+
+    assert called == {
+        "device": "R3",
+        "action": "dry-run",
+    }
+
+
+def test_r5_cannot_trigger_dry_run(monkeypatch):
+    monkeypatch.setattr(
+        automation_router,
+        "find_managed_device",
+        lambda hostname: {
+            "hostname": "R5",
+            "automation_managed": False,
+        },
+    )
+
+    def forbidden_trigger(*args, **kwargs):
+        raise AssertionError(
+            "Jenkins must not be triggered for R5."
+        )
+
+    monkeypatch.setattr(
+        automation_router,
+        "trigger_deployment",
+        forbidden_trigger,
+    )
+
+    response = client.post(
+        "/automation/deploy",
+        data={
+            "device": "R5",
+            "action": "dry-run",
+        },
+    )
+
+    assert response.status_code == 403

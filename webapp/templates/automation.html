@@ -707,16 +707,111 @@
     </div>
 
     <p>
-        Guarded deployment controls for
-        <strong>{{ selected_device.hostname }}</strong>
-        will be provided here.
+        Guarded deployment pipeline for
+        <strong>{{ selected_device.hostname }}</strong>.
     </p>
 
-    <span class="action-note">
-        Dry-run, preview, apply, Jenkins status, and
-        post-deployment results will be integrated in
-        the next Stage 7H steps.
-    </span>
+    {% if deployment_error %}
+
+    <div class="alert alert-error">
+        Jenkins status is currently unavailable:
+        {{ deployment_error }}
+    </div>
+
+    {% elif deployment_job %}
+
+    <div class="report-meta">
+
+        <strong>Jenkins Connection:</strong>
+        <span class="status-pass">CONNECTED</span>
+
+        <br>
+
+        <strong>Deployment Job:</strong>
+        <code>{{ deployment_job.name }}</code>
+
+        <br>
+
+        <strong>Job Available:</strong>
+
+        {% if deployment_job.buildable %}
+            <span class="status-pass">YES</span>
+        {% else %}
+            <span class="status-fail">NO</span>
+        {% endif %}
+
+        <br>
+
+        <strong>Last Build:</strong>
+
+        {% if deployment_job.lastBuild %}
+            #{{ deployment_job.lastBuild.number }}
+        {% else %}
+            None
+        {% endif %}
+
+        <br>
+
+        <strong>Last Completed Result:</strong>
+
+        {% if deployment_job.lastCompletedBuild %}
+
+            {% if deployment_job.lastCompletedBuild.result == "SUCCESS" %}
+                <span class="status-pass">SUCCESS</span>
+            {% else %}
+                <span class="status-fail">
+                    {{ deployment_job.lastCompletedBuild.result }}
+                </span>
+            {% endif %}
+
+        {% else %}
+            None
+        {% endif %}
+
+    </div>
+
+    <form
+        method="post"
+        action="/automation/deploy"
+        class="action-bar"
+    >
+        <input
+            type="hidden"
+            name="device"
+            value="{{ selected_device.hostname }}"
+        >
+
+        <input
+            type="hidden"
+            name="action"
+            value="dry-run"
+        >
+
+        <button
+            type="submit"
+            class="button-secondary"
+        >
+            Run Dry Run
+        </button>
+
+        <span class="action-note">
+            Renders and validates the deployment plan
+            through Jenkins without contacting or
+            changing the device.
+        </span>
+    </form>
+
+    <p class="action-note">
+        Preview and Apply controls are not enabled yet.
+    </p>
+
+    {% else %}
+
+    <p>
+        No Jenkins deployment status is available.
+    </p>
+
+    {% endif %}
 
 </section>
 

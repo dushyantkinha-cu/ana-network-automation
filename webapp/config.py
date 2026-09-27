@@ -21,6 +21,26 @@ NETBOX_URL = os.environ.get(
     "http://netbox.local",
 ).rstrip("/")
 
+JENKINS_URL = os.environ.get(
+    "JENKINS_URL",
+    "",
+).rstrip("/")
+
+JENKINS_USER = os.environ.get(
+    "JENKINS_USER",
+    "",
+)
+
+JENKINS_API_TOKEN = os.environ.get(
+    "JENKINS_API_TOKEN",
+    "",
+)
+
+JENKINS_DEPLOY_JOB = os.environ.get(
+    "JENKINS_DEPLOY_JOB",
+    "ana-network-automation-deploy",
+)
+
 ROUTING_CHOICE_SET_ID = 1
 PROFILE_CHOICE_SET_ID = 2
 

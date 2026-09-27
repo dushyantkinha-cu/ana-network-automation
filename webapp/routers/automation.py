@@ -2,11 +2,16 @@ from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
+    Form,
     HTTPException,
     Request,
 )
 from fastapi.responses import RedirectResponse
 
+from webapp.clients.jenkins import (
+    get_deployment_job,
+    trigger_deployment,
+)
 from webapp.clients.netbox import netbox_get
 from webapp.config import (
     NETBOX_URL,
@@ -24,6 +29,7 @@ from webapp.services.changes import (
     get_wan_address_state,
 )
 from webapp.services.inventory import (
+    find_managed_device,
     get_choice_values,
     get_devices,
     get_sites,
@@ -56,6 +62,8 @@ def automation_page(
     template_path = None
     wan_state = None
     sites = []
+    deployment_job = None
+    deployment_error = None
 
     if device:
         selected_device = next(
@@ -126,6 +134,11 @@ def automation_page(
             selected_device.get("config_profile")
         )
 
+        try:
+            deployment_job = get_deployment_job()
+        except RuntimeError as exc:
+            deployment_error = str(exc)
+
     validation = latest_validation_report()
 
     report = (
@@ -155,6 +168,8 @@ def automation_page(
             "template_path": template_path,
             "wan_state": wan_state,
             "sites": sites,
+            "deployment_job": deployment_job,
+            "deployment_error": deployment_error,
             "validation": validation,
             "report": report,
             "step_status": validation_step_status(
@@ -166,6 +181,68 @@ def automation_page(
             "action_status": status,
             "action_message": message,
         },
+    )
+
+
+@router.post("/automation/deploy")
+def deployment_action(
+    device: str = Form(...),
+    action: str = Form(...),
+):
+    if action != "dry-run":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only dry-run deployment is currently "
+                "enabled from the portal."
+            ),
+        )
+
+    try:
+        managed_device = find_managed_device(device)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    if (
+        not managed_device
+        or managed_device.get("automation_managed")
+        is not True
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Device is not in managed "
+                "automation scope."
+            ),
+        )
+
+    try:
+        trigger_deployment(
+            device=device,
+            action="dry-run",
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=str(exc),
+        ) from exc
+
+    message = (
+        f"Dry run queued successfully in Jenkins "
+        f"for {device}."
+    )
+
+    return RedirectResponse(
+        url=(
+            "/automation"
+            f"?device={quote(device)}"
+            "&status=success"
+            f"&message={quote(message)}"
+        ),
+        status_code=303,
     )
 
 
