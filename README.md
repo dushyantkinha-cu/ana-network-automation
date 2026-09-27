@@ -94,10 +94,16 @@ then reports commit status to GitHub.
 
 The deployment pipeline supports guarded dry-run, preview, and apply
 operations for managed devices. Live apply requires exact device
-confirmation and a separate Jenkins human approval.
+confirmation and automatically runs a non-persistent pre-apply preview
+before the guarded live deployment is allowed to continue.
+
+The FastAPI Automation portal integrates NetBox intent management,
+automatic post-change validation, Jenkins deployment actions, and
+selected-device deployment history.
 
 See [`docs/jenkins-cicd.md`](docs/jenkins-cicd.md) for the complete
-implementation, safety model, operational workflow, and Stage 7G proof.
+implementation, safety model, operational workflow, CI/CD proof, and
+FastAPI deployment integration.
 
 ## Security
 

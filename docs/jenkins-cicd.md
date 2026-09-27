@@ -12,7 +12,7 @@ The Jenkins implementation is responsible for:
 - Running syntax and regression tests
 - Reporting CI status back to GitHub
 - Providing guarded configuration deployment workflows
-- Enforcing manual approval before live configuration changes
+- Enforcing an automatic pre-apply preview before live configuration changes
 - Supplying deployment credentials securely at runtime
 - Reusing the existing vendor-independent deployment framework
 
@@ -96,8 +96,14 @@ No inbound GitHub webhook is required.
 Jenkins remains private on the management network and communicates
 outbound to GitHub when source code or commit-status updates are needed.
 
-Automatic build triggers are intentionally disabled for the deployment
-job.
+The CI job automatically checks GitHub for changes by using Jenkins SCM
+polling on the `main` branch. This allows code and configuration changes
+committed to Git to trigger testing without exposing Jenkins through a
+public inbound webhook.
+
+Automatic SCM triggers remain intentionally disabled for the deployment
+job. Deployment runs are started explicitly through the FastAPI
+Automation portal or the Jenkins interface.
 
 ---
 
@@ -152,10 +158,10 @@ Purpose:
 - Support dry-run, preview, and apply operations
 - Select only the credential required for the target platform
 - Require typed device confirmation for live apply
-- Require a second Jenkins human approval for live apply
+- Require an automatic non-persistent preview before live apply
 - Invoke the existing guarded Python deployment framework
 
-The deployment job is manual-only.
+The deployment job has no SCM trigger. It is started explicitly through the FastAPI Automation portal or the Jenkins interface.
 
 ---
 
@@ -375,7 +381,7 @@ Explicit ACTION choice
 Typed device confirmation
         |
         v
-Jenkins human approval
+Automatic pre-apply preview
         |
         v
 deploy_config.py
@@ -399,7 +405,8 @@ invoked.
 
 ## 9. Jenkins Apply Guardrails
 
-Two Jenkins-specific guardrails were explicitly tested.
+The deployment pipeline enforces multiple controls before a live
+configuration change can occur.
 
 ### 9.1 Incorrect Device Confirmation
 
@@ -409,55 +416,43 @@ Test parameters:
 DEVICE=R3
 ACTION=apply
 CONFIRM_DEVICE=R4
-```
-
 Expected and observed result:
 
-```text
 ERROR: For apply, CONFIRM_DEVICE must exactly match DEVICE.
-```
 
-The following stages were skipped:
+The request is rejected before a live deployment can begin.
+No device configuration is changed.
 
-```text
-Python Environment
-Manual Approval
-Deployment
-```
-
-No device connection was opened.
-
-### 9.2 Manual Approval Abort
-
-Test parameters:
-
-```text
-DEVICE=R3
-ACTION=apply
-CONFIRM_DEVICE=R3
-```
-
-The pipeline reached:
-
-```text
-Apply intended configuration to R3?
-```
-
-The administrator selected:
-
-```text
-Abort
-```
-
-The deployment stage was skipped and Jenkins finished with:
-
-```text
-DEPLOYMENT PIPELINE RESULT: ABORTED
-Finished: ABORTED
-```
-
-This proves that valid parameters alone are not enough to perform a live
+9.2 Automatic Pre-Apply Preview
+For a valid apply request, Jenkins does not immediately perform the live
 deployment.
+The pipeline first invokes:
+
+automation/deploy_config.py --device <DEVICE> --preview
+
+The preview uses the platform-specific safe transaction mechanism and
+must return without leaving a permanent configuration change.
+If preview returns a nonzero status:
+
+Pre-Apply Preview: FAILURE
+Deployment stage: SKIPPED
+Jenkins finishes the pipeline as a failure and the live apply command is
+not executed.
+If preview succeeds, Jenkins proceeds automatically to the guarded live
+deployment:
+automation/deploy_config.py   --device <DEVICE>   --apply   --confirm-device <DEVICE>
+There is no second human approval step in the final workflow.
+The safety boundary is therefore:
+
+exact device confirmation
+        |
+        v
+automatic preview
+        |
+        +--> failure -> no live deployment
+        |
+        v
+guarded live apply
 
 ---
 
@@ -588,18 +583,19 @@ transaction mechanism without leaving a permanent change.
 Preview operations were validated on all three supported platforms.
 
 ### 11.3 Apply
-
 Apply performs a real guarded deployment.
-
 Apply requires:
 
-1. A managed device.
-2. An allowed Jenkins device choice.
-3. Exact typed confirmation.
-4. Jenkins manual approval.
-5. Python deployment safety checks.
-6. Vendor transaction protection.
-7. Successful post-deployment validation.
+A managed device.
+An allowed Jenkins device choice.
+Exact typed device confirmation.
+Successful Jenkins safety-gate validation.
+A successful automatic pre-apply preview.
+Python deployment safety checks and vendor transaction protection.
+Successful post-deployment validation before the operation is
+considered successful.
+If the automatic preview fails, Jenkins marks the pipeline as failed and
+the live Deployment stage is skipped.
 
 ---
 
@@ -707,58 +703,51 @@ Finished: SUCCESS
 ---
 
 ## 14. Live CD Proof
+The final deployment design was live-proven through the FastAPI
+Automation portal using managed Arista EOS device R1.
+The operator submitted an Apply request with exact device confirmation.
+FastAPI queued the parameterized Jenkins deployment job.
+Jenkins first executed the automatic pre-apply preview:
 
-The final Stage 7G live deployment proof used Cisco IOS-XE device R3.
+automation/deploy_config.py --device R1 --preview
 
-Parameters:
+The preview completed without leaving a permanent configuration change.
+Only after the preview passed did Jenkins execute:
 
-```text
-DEVICE=R3
-ACTION=apply
-CONFIRM_DEVICE=R3
-```
+automation/deploy_config.py   --device R1   --apply   --confirm-device R1
+The deployment framework then performed its normal rendering,
+collection, intent validation, drift analysis, vendor transaction
+protection, and post-deployment validation.
+Final result:
 
-Jenkins paused at the manual approval stage and the administrator
-explicitly approved the deployment.
-
-Jenkins then executed:
-
-```text
-automation/deploy_config.py --device R3 --apply --confirm-device R3
-```
-
-The deployment framework staged:
-
-```text
-77 CLI commands
-```
-
-Independent post-deployment validation then confirmed:
-
-```text
-65 intended paths verified
-no scoped drift
-Overall status: PASS
-```
-
-Final deployment state:
-
-```text
-Status: SUCCESS
+Deployment pipeline: SUCCESS
 Validation passed: True
 Committed: True
 Persisted: True
 Rolled back: False
-```
+The successful build was then visible from the FastAPI Automation page
+in the selected-device deployment history.
+This proves the final control path:
 
-Jenkins completed with:
-
-```text
-DEPLOYMENT PIPELINE RESULT: SUCCESS
-Finished: SUCCESS
-```
-
-This proves the complete Git-to-Jenkins-to-device deployment path.
+FastAPI Apply
+    |
+    v
+exact confirmation
+    |
+    v
+Jenkins safety gates
+    |
+    v
+automatic pre-apply preview
+    |
+    v
+guarded live apply
+    |
+    v
+post-deployment validation
+    |
+    v
+device-specific deployment history
 
 ---
 
@@ -830,31 +819,26 @@ The device will be contacted, but the preview mechanism must return the
 device to its original state.
 
 ### Run Live Deployment
-
 Use:
 
-```text
 ACTION=apply
-```
 
 Set:
 
-```text
 CONFIRM_DEVICE
-```
 
 to exactly the same hostname selected in:
 
-```text
 DEVICE
-```
 
-After the pipeline reaches the Jenkins approval gate, review the target
-device carefully before selecting:
-
-```text
-Deploy
-```
+The FastAPI portal requires the same exact hostname confirmation before
+the Jenkins request is submitted.
+After the request is accepted, Jenkins automatically performs a
+pre-apply Preview. The operator does not approve a second Jenkins prompt.
+If Preview fails, the pipeline fails and the live Deployment stage is
+skipped.
+If Preview passes, Jenkins automatically continues into the guarded live
+Apply operation.
 
 ---
 
@@ -872,12 +856,15 @@ The Jenkins implementation follows these project security rules:
   vendor credentials for every deployment.
 - R5 is excluded from the Jenkins device parameter.
 - The Python framework independently enforces the managed-device policy.
-- Live apply requires both typed confirmation and manual approval.
+- Live apply requires exact typed confirmation and a successful automatic pre-apply preview.
 - Vendor-specific rollback or confirmed-commit mechanisms protect
   configuration changes.
 - Post-deployment validation is required for deployment success.
-- Deployment builds are manual and are not triggered automatically by
-  public repository activity.
+- Deployment builds are explicitly requested through FastAPI or
+  Jenkins and are not triggered automatically by public repository
+  activity.
+CI builds are separate from deployment builds and automatically test
+Git changes through Jenkins SCM polling.
 
 ---
 
@@ -909,40 +896,69 @@ Jenkins is not a source of truth.
 
 ---
 
-## 19. Stage 7G Result
-
-Stage 7G established the complete CI/CD workflow:
-
-```text
-GitHub
-   |
-   v
+## 19. Final CI/CD and FastAPI Integration Result
+The completed implementation combines automatic CI, source-of-truth
+management, guarded deployment, and operator-visible deployment history.
+GitHub main branch
+    |
+    v
 Jenkins CI
-   |
-   +--> syntax validation
-   +--> 177 automated tests
-   +--> repository cleanliness check
-   +--> GitHub commit status
-   |
-   v
-Jenkins guarded deployment
-   |
-   +--> managed-device selection
-   +--> dry-run
-   +--> multi-vendor preview
-   +--> typed confirmation
-   +--> manual approval
-   |
-   v
-Existing deployment framework
-   |
-   +--> NetBox safety gates
-   +--> vendor transaction protection
-   +--> post-deployment validation
-   |
-   v
-Managed network device
-```
+    |
+    +--> automatic SCM change detection
+    +--> Python syntax validation
+    +--> automated regression tests
+    +--> repository cleanliness check
+    +--> GitHub commit status
 
-The implementation was live-proven using CI and an approved guarded
-deployment to R3.
+
+FastAPI Automation portal
+    |
+    +--> NetBox intended-state changes
+    |       |
+    |       v
+    |   automatic device validation
+    |
+    +--> Dry Run
+    |
+    +--> Preview
+    |
+    +--> Apply
+            |
+            v
+        exact device confirmation
+            |
+            v
+        Jenkins safety gates
+            |
+            v
+        automatic pre-apply preview
+            |
+            +--> failure -> live deployment skipped
+            |
+            v
+        guarded live deployment
+            |
+            v
+        post-deployment validation
+            |
+            v
+        selected-device deployment history
+The current automated regression suite contains 193 passing tests,
+including FastAPI workflow tests covering intent changes, automatic
+validation, deployment requests, selected-device build history, and
+managed-scope enforcement.
+R5 remains outside the managed automation scope and is excluded from the
+Jenkins deployment device choices.
+New devices created through the portal are initially staged in NetBox
+with automation disabled. They are not automatically validated or
+deployed as managed devices.
+The resulting system preserves the authority boundaries of the project:
+
+NetBox defines network inventory, IPAM, metadata, and intended state.
+Git stores automation code, templates, documentation, and pipeline
+definitions.
+Jenkins tests repository changes and orchestrates guarded deployments.
+FastAPI provides the unified operator workflow.
+The Python deployment framework performs rendering, safety checks,
+vendor-specific transaction handling, rollback behavior, and
+post-deployment validation.
