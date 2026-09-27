@@ -201,3 +201,186 @@ def trigger_deployment(
         "device": device,
         "action": action,
     }
+
+
+def resolve_queue_build(
+    queue_url,
+    attempts=20,
+    delay=0.5,
+):
+    import time
+    from urllib.parse import urlparse
+
+    queue_path = urlparse(
+        queue_url
+    ).path.rstrip("/")
+
+    for _ in range(attempts):
+        response = jenkins_request(
+            "GET",
+            queue_path + "/api/json",
+        )
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise RuntimeError(
+                "Jenkins returned invalid queue JSON."
+            ) from exc
+
+        executable = data.get("executable") or {}
+        build_number = executable.get("number")
+
+        if build_number is not None:
+            return build_number
+
+        if data.get("cancelled"):
+            raise RuntimeError(
+                "Jenkins queue item was cancelled."
+            )
+
+        time.sleep(delay)
+
+    raise RuntimeError(
+        "Jenkins build did not leave the queue "
+        "in time."
+    )
+
+
+def get_deployment_build(build_number):
+    response = jenkins_request(
+        "GET",
+        (
+            f"/job/{_job_path()}/{int(build_number)}"
+            "/api/json"
+            "?tree=number,url,building,result,"
+            "actions[parameters[name,value]]"
+        ),
+    )
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise RuntimeError(
+            "Jenkins returned invalid build JSON."
+        ) from exc
+
+    parameters = {}
+
+    for action in data.get("actions", []):
+        for parameter in action.get(
+            "parameters",
+            [],
+        ):
+            name = parameter.get("name")
+
+            if name:
+                parameters[name] = parameter.get(
+                    "value"
+                )
+
+    data["parameters"] = parameters
+
+    return data
+
+
+def get_pending_approval(build_number):
+    path = (
+        f"/job/{_job_path()}/{int(build_number)}"
+        "/input/DeployApproval/"
+    )
+
+    _require_config()
+
+    url = (
+        JENKINS_URL
+        + "/"
+        + path.lstrip("/")
+    )
+
+    try:
+        response = requests.get(
+            url,
+            auth=(
+                JENKINS_USER,
+                JENKINS_API_TOKEN,
+            ),
+            timeout=DEFAULT_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"Unable to reach Jenkins: {exc}"
+        ) from exc
+
+    if response.status_code == 404:
+        return None
+
+    if response.status_code >= 400:
+        raise RuntimeError(
+            "Jenkins approval lookup failed with "
+            f"HTTP {response.status_code}."
+        )
+
+    marker = 'name="DeployApproval"'
+
+    if marker not in response.text:
+        return None
+
+    return {
+        "id": "DeployApproval",
+        "build_number": int(build_number),
+    }
+
+
+def submit_deployment_approval(
+    build_number,
+    decision,
+):
+    if decision not in {
+        "approve",
+        "abort",
+    }:
+        raise RuntimeError(
+            "Approval decision must be approve "
+            "or abort."
+        )
+
+    approval = get_pending_approval(
+        build_number
+    )
+
+    if not approval:
+        raise RuntimeError(
+            "No pending deployment approval exists."
+        )
+
+    crumb = get_crumb()
+
+    if decision == "approve":
+        data = {
+            "proceed": "Deploy",
+        }
+    else:
+        data = {
+            "abort": "Abort",
+        }
+
+    response = jenkins_request(
+        "POST",
+        (
+            f"/job/{_job_path()}/"
+            f"{int(build_number)}/input/"
+            "DeployApproval/submit"
+        ),
+        headers={
+            crumb["field"]: crumb["value"],
+        },
+        data=data,
+        allow_redirects=False,
+    )
+
+    return {
+        "build_number": int(build_number),
+        "decision": decision,
+        "status_code": response.status_code,
+    }
