@@ -149,6 +149,7 @@ for interface in interfaces:
         ),
         "enabled": interface.get("enabled"),
         "mgmt_only": interface.get("mgmt_only"),
+        "description": interface.get("description") or "",
         "mode": mode,
         "untagged_vlan": untagged_vlan,
         "tagged_vlans": sorted(tagged_vlans),
