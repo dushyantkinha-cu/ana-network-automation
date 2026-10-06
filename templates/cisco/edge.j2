@@ -94,6 +94,7 @@ router bgp {{ ctx.bgp.local_asn }}
  address-family ipv6
   redistribute ospf {{ ctx.ospf.process_id }} match internal external 1 external 2 route-map {{ ctx.route_maps.ospf_to_bgp }}
   neighbor {{ ctx.bgp.provider_ipv6_neighbor }} activate
+  neighbor {{ ctx.bgp.provider_ipv6_neighbor }} prefix-list PL-WEB-V6 in
  exit-address-family
 !
 
