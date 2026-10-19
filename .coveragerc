@@ -1,0 +1,7 @@
+[run]
+branch = True
+source =
+    automation
+    webapp
+omit =
+    */automation/rotate_device_passwords.py

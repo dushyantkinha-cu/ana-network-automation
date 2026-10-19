@@ -106,9 +106,43 @@ pipeline {
                 sh '''
                     set -eu
 
-                    .venv/bin/python -m pytest \
-                        -q
+                    .venv/bin/python -m pytest -q \
+                        tests/test_arista_deployment.py \
+                        tests/test_cisco_deployment.py \
+                        tests/test_deployment_framework.py \
+                        tests/test_nokia_deployment.py \
+                        tests/test_webapp_baseline.py \
+                        tests/test_validate_intent.py \
+                        tests/test_netbox_inventory.py \
+                        tests/test_render_config.py \
+                        tests/test_device_connection.py \
+                        tests/test_collect_live_configs.py \
+                        tests/test_compare_goldens.py \
+                        tests/test_promote_golden.py \
+                        tests/test_report_drift.py \
+                        tests/test_run_validation.py \
+                        tests/test_webapp_changes_service.py \
+                        tests/test_webapp_netbox_client.py \
+                        tests/test_webapp_automation_service.py \
+                        tests/test_webapp_inventory_service.py \
+                        tests/test_webapp_jenkins_client.py \
+                        tests/test_webapp_onboarding.py \
+                        tests/test_webapp_sites.py \
+                        tests/test_webapp_changes_router.py \
+                        tests/test_webapp_automation_router.py \
+                        tests/test_webapp_core_router.py \
+                        --cov=automation \
+                        --cov=webapp \
+                        --cov-config=.coveragerc \
+                        --cov-branch \
+                        --cov-report=term \
+                        --cov-report=xml:coverage.xml
+
+                    .venv/bin/python scripts/coverage_audit.py \
+                        coverage-audit.json | tee coverage-audit.txt
                 '''
+
+                archiveArtifacts artifacts: 'coverage.xml,coverage-audit.json,coverage-audit.txt'
             }
         }
 
