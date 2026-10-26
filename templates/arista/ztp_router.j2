@@ -1,0 +1,86 @@
+hostname {{ device.hostname }}
+!
+ip routing
+!
+{% set access_ports = ctx.get("vlan_access_ports", {}) %}
+{% for vid in access_ports.values() | unique | sort %}
+vlan {{ vid }}
+!
+{% endfor %}
+
+{% for interface in device.interfaces if not interface.mgmt_only %}
+interface {{ interface.name | arista_ifname }}
+{% if interface.name.startswith("Et") %}
+{% if interface.name in access_ports %}
+   switchport mode access
+   switchport access vlan {{ access_ports[interface.name] }}
+{% else %}
+   no switchport
+{% endif %}
+{% endif %}
+{% for address in interface.ip_addresses %}
+{% if (address | ip_family) == 4 %}
+   ip address {{ address }}
+{% elif (address | ip_family) == 6 %}
+   ipv6 address {{ address }}
+{% endif %}
+{% endfor %}
+{% if ctx.ospf is defined and interface.name == "Et1" %}
+   ip ospf network point-to-point
+{% endif %}
+{% if ctx.isis is defined and interface.name in ctx.isis.interfaces %}
+   isis enable {{ ctx.isis.process_id }}
+{% if interface.name in ctx.isis.passive_interfaces %}
+   isis passive
+{% elif interface.name.startswith("Et") %}
+   isis network point-to-point
+{% endif %}
+{% endif %}
+{% if not interface.enabled %}
+   shutdown
+{% endif %}
+!
+{% endfor %}
+
+{% if ctx.redistribution is defined %}
+{% for prefix in ctx.redistribution.isis_to_ospf.prefixes %}
+ip prefix-list PL-ZTP-ISIS-TO-OSPF seq {{ loop.index * 10 }} permit {{ prefix }}
+{% endfor %}
+{% for prefix in ctx.redistribution.ospf_to_isis.prefixes %}
+ip prefix-list PL-ZTP-OSPF-TO-ISIS seq {{ loop.index * 10 }} permit {{ prefix }}
+{% endfor %}
+!
+route-map RM-ZTP-ISIS-TO-OSPF permit 10
+   match ip address prefix-list PL-ZTP-ISIS-TO-OSPF
+!
+route-map RM-ZTP-OSPF-TO-ISIS permit 10
+   match ip address prefix-list PL-ZTP-OSPF-TO-ISIS
+   set isis level {{ ctx.redistribution.ospf_to_isis.level }}
+!
+{% endif %}
+
+{% if ctx.isis is defined %}
+router isis {{ ctx.isis.process_id }}
+   net {{ ctx.isis.net }}
+   is-type {{ ctx.isis.is_type }}
+{% if ctx.redistribution is defined %}
+   redistribute ospf match {{ ctx.redistribution.ospf_to_isis.match }} route-map RM-ZTP-OSPF-TO-ISIS
+{% endif %}
+   address-family ipv4 unicast
+!
+{% endif %}
+
+{% if ctx.ospf is defined %}
+router ospf {{ ctx.ospf.process_id }}
+   router-id {{ ctx.router_id }}
+{% for interface in ctx.ospf.passive_interfaces %}
+   passive-interface {{ interface | arista_ifname }}
+{% endfor %}
+{% for network in ctx.ospf.networks %}
+   network {{ network.prefix }} area {{ network.area }}
+{% endfor %}
+{% if ctx.redistribution is defined %}
+   redistribute isis {{ ctx.redistribution.isis_to_ospf.level }} route-map RM-ZTP-ISIS-TO-OSPF
+{% endif %}
+!
+{% endif %}

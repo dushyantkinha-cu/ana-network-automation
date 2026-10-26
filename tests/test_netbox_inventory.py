@@ -128,6 +128,7 @@ def test_inventory_pagination_and_managed_filter(
         lambda: fake_session,
     )
 
+    monkeypatch.setattr("sys.argv", [str(SCRIPT)])
     runpy.run_path(
         str(SCRIPT),
         run_name="__main__",
@@ -313,6 +314,7 @@ def test_inventory_normalizes_interfaces_vlans_and_fhrp(
         requests, "Session", lambda: fake_session
     )
 
+    monkeypatch.setattr("sys.argv", [str(SCRIPT)])
     runpy.run_path(str(SCRIPT), run_name="__main__")
 
     output = json.loads(capsys.readouterr().out)

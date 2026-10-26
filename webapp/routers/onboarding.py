@@ -525,3 +525,92 @@ async def create_staged_device(request: Request):
         ),
         status_code=303,
     )
+
+
+# ZTP configuration delivery for approved Containerlab routers.
+# Management and SSH configuration remain untouched.
+
+@router.get("/ztp/bootstrap")
+def ztp_bootstrap(request: Request):
+    import subprocess
+    import sys
+
+    from fastapi.responses import PlainTextResponse
+    from webapp.config import REPO_ROOT
+
+    approved = {
+        ("001c731e1576", "A4D550D8B0D7BAF2910D5CBFC41E54EA"): ("R6", 15),
+        ("001c7364086f", "9C7C2E9251F69737D3C49BCFC89497DC"): ("R7", 16),
+    }
+
+    mac = "".join(
+        c for c in request.headers.get("x-arista-systemmac", "").lower()
+        if c in "0123456789abcdef"
+    )
+    serial = request.headers.get("x-arista-serial", "").strip()
+
+    identity = approved.get((mac, serial))
+
+    if identity is None:
+        raise HTTPException(status_code=403, detail="Unapproved ZTP identity.")
+
+    hostname, device_id = identity
+
+    try:
+        device = netbox_get(f"/api/dcim/devices/{device_id}/")
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503, detail="NetBox unavailable."
+        ) from exc
+
+    status = device.get("status")
+    if isinstance(status, dict):
+        status = status.get("value")
+
+    fields = device.get("custom_fields") or {}
+    profile = fields.get("config_profile")
+    if isinstance(profile, dict):
+        profile = profile.get("value")
+
+    context = device.get("local_context_data") or {}
+
+    if not (
+        device.get("name") == hostname
+        and device.get("serial") == serial
+        and status == "active"
+        and fields.get("automation_managed") is True
+        and profile == "distribution"
+        and context.get("provisioning_variant") == "ztp_router"
+    ):
+        raise HTTPException(
+            status_code=403, detail="Device is not approved for ZTP."
+        )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "automation/render_config.py"),
+            "--device",
+            hostname,
+            "--stdout",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
+
+    config = result.stdout
+
+    if (
+        result.returncode != 0
+        or not config.startswith(f"hostname {hostname}\n")
+        or "automation-mgmt" in config
+        or "interface Management0" in config
+        or "\nip routing\n" not in config
+    ):
+        raise HTTPException(
+            status_code=503, detail="ZTP configuration rendering failed."
+        )
+
+    return PlainTextResponse(config)

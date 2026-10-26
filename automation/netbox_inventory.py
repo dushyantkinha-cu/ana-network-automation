@@ -194,13 +194,38 @@ for vlan in vlans:
 
 inventory = []
 
+# Explicitly approved initial-provisioning targets.
+# Normal inventory behavior remains unchanged.
+staged_target = None
+
+if len(sys.argv) == 3 and sys.argv[1] == "--staged-device":
+    staged_target = sys.argv[2]
+    if staged_target not in {"R6", "R7"}:
+        fail("Staged inventory access is limited to R6 and R7.")
+elif len(sys.argv) != 1:
+    fail("Usage: netbox_inventory.py [--staged-device R6|R7]")
+
 
 for device in devices:
     custom_fields = device.get("custom_fields") or {}
 
-    # Hard automation safety gate.
-    if custom_fields.get("automation_managed") is not True:
-        continue
+    # Preserve the hard gate for normal managed inventory.
+    if staged_target is None:
+        if custom_fields.get("automation_managed") is not True:
+            continue
+    else:
+        if device.get("name") != staged_target:
+            continue
+
+        staged_status = device.get("status") or {}
+        if isinstance(staged_status, dict):
+            staged_status = staged_status.get("value")
+
+        if staged_status != "staged":
+            fail(f"{staged_target} is not staged.")
+
+        if custom_fields.get("automation_managed") is not False:
+            fail(f"{staged_target} must remain unmanaged.")
 
     platform = device.get("platform") or {}
     role = device.get("role") or {}
@@ -261,12 +286,15 @@ for device in devices:
                 for item in (custom_fields.get("routing_protocols") or [])
             ),
             "config_context": device.get("config_context") or {},
-            "automation_managed": True,
+            "automation_managed": custom_fields.get("automation_managed") is True,
             "interfaces": device_interfaces,
             "vlans": device_vlans,
         }
     )
 
+
+if staged_target and len(inventory) != 1:
+    fail(f"Staged device {staged_target} was not found.")
 
 inventory.sort(key=lambda device: device["hostname"])
 
@@ -274,7 +302,7 @@ inventory.sort(key=lambda device: device["hostname"])
 print(
     json.dumps(
         {
-            "managed_device_count": len(inventory),
+            "managed_device_count": sum(d["automation_managed"] for d in inventory),
             "devices": inventory,
         },
         indent=2,

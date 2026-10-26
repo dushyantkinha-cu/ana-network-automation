@@ -65,7 +65,17 @@ def validate_device_for_deployment(
 
     status = device.get("status")
 
-    if status not in DEPLOYABLE_STATUSES:
+    staged_ztp_allowed = (
+        hostname in {"R6", "R7"}
+        and status == "staged"
+        and device.get("platform") == "Arista EOS"
+        and device.get("config_profile") == "distribution"
+        and (device.get("config_context") or {}).get(
+            "provisioning_variant"
+        ) == "ztp_router"
+    )
+
+    if status not in DEPLOYABLE_STATUSES and not staged_ztp_allowed:
         raise DeploymentSafetyError(
             f"{hostname}: device status {status!r} "
             "is not deployable."

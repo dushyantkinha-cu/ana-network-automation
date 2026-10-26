@@ -159,7 +159,23 @@ def main():
         device["config_profile"],
     )
 
-    template_name = TEMPLATE_MAP.get(key)
+    ctx = device.get("config_context") or {}
+    variant = ctx.get("provisioning_variant")
+
+    if device["hostname"] in {"R6", "R7"}:
+        if (
+            key != ("Arista EOS", "distribution")
+            or variant != "ztp_router"
+        ):
+            fail("R6/R7 require the approved ZTP router profile.")
+
+        template_name = "arista/ztp_router.j2"
+
+    else:
+        if variant == "ztp_router":
+            fail("ZTP router template is restricted to R6/R7.")
+
+        template_name = TEMPLATE_MAP.get(key)
 
     if not template_name:
         fail(
