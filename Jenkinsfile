@@ -127,6 +127,8 @@ pipeline {
                         tests/test_webapp_inventory_service.py \
                         tests/test_webapp_jenkins_client.py \
                         tests/test_webapp_onboarding.py \
+                        tests/test_lab9_ospf_template.py \
+                        tests/test_lab9_ztp_bootstrap.py \
                         tests/test_webapp_sites.py \
                         tests/test_webapp_changes_router.py \
                         tests/test_webapp_automation_router.py \
