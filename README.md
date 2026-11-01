@@ -85,6 +85,15 @@ automation framework.
 - `Jenkinsfile` - Jenkins Continuous Integration pipeline
 - `Jenkinsfile.deploy` - Guarded Jenkins deployment pipeline
 
+## Lab 9 Documentation
+
+See [Lab 9 - R8/S5 ZTP and Monitoring](docs/lab9-r8-s5-ztp-monitoring.md)
+for the network expansion, device-initiated ZTP, NetBox automation,
+OSPF, telemetry, Grafana integration, validation evidence, and
+remaining work.
+
+The live Graphviz topology enhancement is documented but deferred.
+
 ## CI/CD
 
 Jenkins provides the repository's CI/CD workflow from Ubuntu VM2.

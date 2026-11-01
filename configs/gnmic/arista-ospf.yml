@@ -54,6 +54,26 @@ targets:
       mgmt_ip: 172.20.20.5
 
 
+  R8:
+    address: 172.20.20.20:6030
+    username: ${ARISTA_USERNAME}
+    password: ${ARISTA_PASSWORD}
+    insecure: true
+
+    subscriptions:
+      - ospfv2
+      - ospfv3
+
+    outputs:
+      - influx_raw
+      - influx_canonical
+
+    event-tags:
+      device: R8
+      vendor: arista
+      mgmt_ip: 172.20.20.20
+
+
   S3:
     address: 172.20.20.7:6030
     username: ${ARISTA_USERNAME}
