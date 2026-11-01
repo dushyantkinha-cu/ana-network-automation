@@ -200,10 +200,10 @@ staged_target = None
 
 if len(sys.argv) == 3 and sys.argv[1] == "--staged-device":
     staged_target = sys.argv[2]
-    if staged_target not in {"R6", "R7"}:
-        fail("Staged inventory access is limited to R6 and R7.")
+    if staged_target not in {"R6", "R7", "R8", "S5"}:
+        fail("Staged inventory access is limited to R6, R7, R8 and S5.")
 elif len(sys.argv) != 1:
-    fail("Usage: netbox_inventory.py [--staged-device R6|R7]")
+    fail("Usage: netbox_inventory.py [--staged-device R6|R7|R8|S5]")
 
 
 for device in devices:

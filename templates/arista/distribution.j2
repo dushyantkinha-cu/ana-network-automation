@@ -18,6 +18,13 @@ interface {{ interface.name | arista_ifname }}
    ipv6 address {{ address }}
 {% endif %}
 {% endfor %}
+{% set ospf_areas = ctx.ospf.get("interface_areas", {}) %}
+{% if interface.name in ospf_areas %}
+   ip ospf area {{ ospf_areas[interface.name] }}
+{% endif %}
+{% if interface.name in ctx.ospf.get("point_to_point_interfaces", []) %}
+   ip ospf network point-to-point
+{% endif %}
 {% if interface.name in ctx.ospfv3.interfaces %}
    ipv6 ospf {{ ctx.ospfv3.process_id }} area 0.0.0.0
 {% endif %}

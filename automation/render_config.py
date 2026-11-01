@@ -162,6 +162,7 @@ def main():
     ctx = device.get("config_context") or {}
     variant = ctx.get("provisioning_variant")
 
+    # Preserve the existing R6/R7 provisioning requirements.
     if device["hostname"] in {"R6", "R7"}:
         if (
             key != ("Arista EOS", "distribution")
@@ -169,11 +170,42 @@ def main():
         ):
             fail("R6/R7 require the approved ZTP router profile.")
 
+    # Select ZTP templates using NetBox provisioning intent.
+    if variant == "ztp_router":
+        if key != ("Arista EOS", "distribution"):
+            fail("ZTP router requires Arista EOS distribution profile.")
+
         template_name = "arista/ztp_router.j2"
 
+    elif variant == "ztp_switch":
+        if key != ("Arista EOS", "access"):
+            fail("ZTP switch requires Arista EOS access profile.")
+
+        access_ports = ctx.get("vlan_access_ports")
+
+        if not isinstance(access_ports, dict) or not access_ports:
+            fail("ZTP switch requires VLAN access-port intent.")
+
+        known_ports = {
+            interface["name"]
+            for interface in device["interfaces"]
+            if not interface.get("mgmt_only")
+        }
+
+        for port, vlan in access_ports.items():
+            if (
+                port not in known_ports
+                or not port.startswith("Et")
+                or type(vlan) is not int
+                or not 1 <= vlan <= 4094
+            ):
+                fail("Invalid ZTP switch access-port intent.")
+
+        template_name = "arista/ztp_switch.j2"
+
     else:
-        if variant == "ztp_router":
-            fail("ZTP router template is restricted to R6/R7.")
+        if isinstance(variant, str) and variant.startswith("ztp_"):
+            fail("Unsupported ZTP provisioning variant.")
 
         template_name = TEMPLATE_MAP.get(key)
 

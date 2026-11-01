@@ -1,0 +1,17 @@
+hostname {{ device.hostname }}
+!
+{% set access_ports = ctx.vlan_access_ports %}
+{% for vlan_id in access_ports.values() | unique | sort %}
+vlan {{ vlan_id }}
+!
+{% endfor %}
+
+{% for interface in device.interfaces if not interface.mgmt_only and interface.name in access_ports %}
+interface {{ interface.name | arista_ifname }}
+   switchport mode access
+   switchport access vlan {{ access_ports[interface.name] }}
+{% if not interface.enabled %}
+   shutdown
+{% endif %}
+!
+{% endfor %}
